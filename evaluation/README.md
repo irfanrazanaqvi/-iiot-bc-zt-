@@ -18,6 +18,7 @@ python gen_result_figures.py       # -> figures/fig3_latency.png ... fig6_securi
 | `simulate_performance.py` | `results/results_perf.csv`, `results_centralized.csv`, `results_cpu_mem.csv`, `results_security.csv`, `results_misc.json` | Discrete-event simulation calibrated to the Besu QBFT parameters in `../network/genesis.json` (2 s block period, ~65,000 gas/access-decision tx, 30M gas block limit) and to measured-order-of-magnitude Besu/Fabric IoT benchmarking overheads reported in the literature (see paper refs [9],[11]). **This is a stand-in for live-network measurement** — see "Replacing simulation with real measurements" below. |
 | `gen_fig1_architecture.py` | `figures/fig1_architecture.png` | Static architecture diagram (Figure 1 in the paper) — hand-drawn from the `contracts/` + `docker-compose.yml` design, not data-driven. |
 | `gen_fig2_workflow.py` | `figures/fig2_workflow.png` | Sequence diagram of the continuous-verification flow (Figure 2) — mirrors `testbed/gateway.py`'s call sequence into `contracts/AccessControlManager.sol`. |
+| `analyze_results.py` | `results/summary_stats.json` | Computes the headline means, gains and ranges quoted in the manuscript from the CSVs (standard library only). |
 | `gen_result_figures.py` | `figures/fig3_latency.png` ... `fig6_security.png` | Reads the CSVs from `simulate_performance.py` and plots Figures 3-6. |
 
 ## Replacing simulation with real measurements

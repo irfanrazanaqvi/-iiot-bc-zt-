@@ -134,9 +134,13 @@ python plot_results.py --csv results.csv --out-prefix fig
 in Sections 6.5 and 7.4–7.7. Re-run against a non-blockchain baseline (e.g. a static
 ACL/RBAC gateway) to reproduce the comparative results in Section 8.4.
 
+## Results at a glance (simulation, seed 42)
+
+Mean correct attack denial over scenarios A1-A6: **95.6 %** proposed vs 85.0 % centralized ZT, 56.2 % static RBAC, 3.5 % no access control; latency ~1.0 s (p95 <2 s), set by QBFT block finality. These come from a seeded discrete-event simulation, not a live-network run; see `docs/RESULTS_SUMMARY.md`.
+
 ## 8. Reproducing the paper's figures and results tables
 
-Everything used to generate the manuscript's Figures 1-6 and Tables 5-7 is in
+Everything used to generate the manuscript's Figures 1-6 and Tables V-VI is in
 `evaluation/` — see `evaluation/README.md`. In short:
 
 ```bash
@@ -146,6 +150,7 @@ python simulate_performance.py
 python gen_fig1_architecture.py
 python gen_fig2_workflow.py
 python gen_result_figures.py
+python analyze_results.py   # headline numbers -> results/summary_stats.json
 ```
 
 This reproduces `evaluation/figures/*.png` and `evaluation/results/*.csv` exactly as used
@@ -173,6 +178,6 @@ git push -u origin main
 - The `gateway.py` device→address mapping is a deterministic mock for the demo; in a real
   deployment, device blockchain addresses are bound during the attestation/enrollment flow
   (`IdentityRegistry.registerDevice`), not derived from a device-ID string.
-- All numeric results in the paper's Section 7 should be regenerated from your own run of
+- All numeric results in the paper's results section should be regenerated from your own run of
   `benchmark/latency_throughput_test.py` on your target hardware — the paper should report
-  actual measured values, hardware spec, and number of trials/statistical treatment (Section 6.7).
+  actual measured values, hardware spec, and number of trials/statistical treatment (see the manuscript's Methodology).

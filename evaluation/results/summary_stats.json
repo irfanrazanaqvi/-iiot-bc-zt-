@@ -1,0 +1,63 @@
+{
+  "seed": 42,
+  "mean_denial_rate_pct": {
+    "No ACL (B0)": 3.5,
+    "Static RBAC (B1)": 56.2,
+    "Centralized ZT (B2)": 85.0,
+    "Proposed": 95.6
+  },
+  "proposed_gain_pp_per_scenario": {
+    "No ACL (B0)": {
+      "mean_pp": 92.1,
+      "min_pp": 86.4,
+      "max_pp": 96.0
+    },
+    "Static RBAC (B1)": {
+      "mean_pp": 39.4,
+      "min_pp": 32.6,
+      "max_pp": 46.6
+    },
+    "Centralized ZT (B2)": {
+      "mean_pp": 10.6,
+      "min_pp": 1.4,
+      "max_pp": 15.7
+    }
+  },
+  "latency_mean_ms_range": [
+    1033.49,
+    1074.02
+  ],
+  "latency_p95_ms_range": [
+    1908.74,
+    1957.88
+  ],
+  "latency_max_ms": 2068.78,
+  "throughput_rps": {
+    "1": 0.49,
+    "200": 96.88
+  },
+  "grant_rate_range": [
+    0.897,
+    0.937
+  ],
+  "centralized_latency_mean_ms_range": [
+    21.26,
+    21.81
+  ],
+  "centralized_max_throughput_rps": 9291.02,
+  "validator_cpu_pct": [
+    7.3,
+    91.8
+  ],
+  "gateway_cpu_pct": [
+    3.8,
+    97.0
+  ],
+  "revocation": {
+    "mean_s": 3.02,
+    "stdev_s": 0.52,
+    "min_s": 2.2,
+    "max_s": 3.76
+  },
+  "max_tx_per_block": 461
+}
