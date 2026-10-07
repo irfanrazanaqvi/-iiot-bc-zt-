@@ -39,6 +39,10 @@ intervals or significance tests.
 | Eq. (1)-(5) | Trust decay, re-anchoring, grant predicate, latency, capacity | `contracts/TrustManager.sol`, `contracts/AccessControlManager.sol`; capacity modeled in `simulate_performance.py` | — |
 | Derived headline numbers | Means, gains, ranges | `evaluation/results/summary_stats.json` | `evaluation/analyze_results.py` |
 
+## Live-network measurements
+
+`evaluation/results_live/` and `live/README.md` hold measurements from a real Besu QBFT network (single run, 2-vCPU host). They differ from the simulation in places (closed-loop latency ~2.0 s vs ~1.0 s; measured gas 48.8k vs 65k assumed; revocation 4.0 s vs 3.0 s; throughput limited by the host). Prefer these where they disagree.
+
 ## IMPORTANT: what is simulated vs. what is real Besu output
 
 - **Real, runnable Besu/Solidity/Python code**: `network/`, `contracts/`, `scripts/`, `testbed/`, `benchmark/`. These deploy and run against an actual 4-node Hyperledger Besu QBFT network.

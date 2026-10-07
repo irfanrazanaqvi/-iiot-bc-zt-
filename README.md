@@ -138,6 +138,10 @@ ACL/RBAC gateway) to reproduce the comparative results in Section 8.4.
 
 Mean correct attack denial over scenarios A1-A6: **95.6 %** proposed vs 85.0 % centralized ZT, 56.2 % static RBAC, 3.5 % no access control; latency ~1.0 s (p95 <2 s), set by QBFT block finality. These come from a seeded discrete-event simulation, not a live-network run; see `docs/RESULTS_SUMMARY.md`.
 
+## Live Besu results
+
+`live/` contains measurements from a real 4-validator Besu QBFT network (no Docker needed): load sweep, attack scenarios, revocation timing. See [`live/README.md`](live/README.md). Headline: ~1.2 s mean / 2.1 s p95 latency under random arrivals; 100 % denial in the six enforceable scenarios; revocation ~4.0 s; throughput saturated near 26-29 req/s on a 2-vCPU host.
+
 ## 8. Reproducing the paper's figures and results tables
 
 Everything used to generate the manuscript's Figures 1-6 and Tables V-VI is in

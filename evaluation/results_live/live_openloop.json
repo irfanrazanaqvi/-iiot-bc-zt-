@@ -1,0 +1,9 @@
+{
+ "n": 200,
+ "mean_arrival_gap_s": 0.5,
+ "latency_mean_ms": 1241.1,
+ "latency_p50_ms": 1333.8,
+ "latency_p95_ms": 2079.9,
+ "latency_max_ms": 2257.9,
+ "grant_rate": 1.0
+}

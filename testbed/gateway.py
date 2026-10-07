@@ -1,4 +1,8 @@
 """
+NOTE: reference sketch only. It assumes an unlocked node account and treats receipt.status as the decision;
+Besu has no unlocked accounts and checkAccess returns its verdict via an event. Use live/gateway_live.py,
+which signs locally and reads the AccessDecision event (this is what the live experiments used).
+
 Zero-Trust Gateway (Policy Enforcement Point, PEP).
 
 Sits at the OT/IT boundary between IIoT devices and protected resources. It never makes

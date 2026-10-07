@@ -1,0 +1,52 @@
+{
+ "A2_revoked_device": {
+  "denial_rate": 1.0,
+  "n": 20,
+  "reasons": [
+   "identity-invalid"
+  ]
+ },
+ "A3_flood_unenrolled": {
+  "denial_rate": 1.0,
+  "n": 300,
+  "reasons": [
+   "identity-invalid"
+  ]
+ },
+ "A4_lateral_nopolicy": {
+  "denial_rate": 1.0,
+  "n": 20,
+  "reasons": [
+   "no-policy"
+  ]
+ },
+ "A4_lateral_hightier": {
+  "denial_rate": 1.0,
+  "n": 20,
+  "reasons": [
+   "insufficient-trust"
+  ]
+ },
+ "A5_low_trust": {
+  "denial_rate": 1.0,
+  "n": 20,
+  "reasons": [
+   "insufficient-trust"
+  ]
+ },
+ "A5_control_legit": {
+  "denial_rate": 0.0,
+  "n": 20,
+  "reasons": [
+   "granted"
+  ]
+ },
+ "A6_time_window": {
+  "denial_rate": 1.0,
+  "n": 20,
+  "reasons": [
+   "outside-time-window"
+  ]
+ },
+ "not_testable_live": "A1 replay: AccessControlManager has no signature/nonce verification, so replay is not enforced on-chain in this prototype."
+}
