@@ -1,0 +1,27 @@
+{
+  "revocation": {
+    "mean_s": 3.02,
+    "stdev_s": 0.52,
+    "min_s": 2.2,
+    "max_s": 3.76
+  },
+  "storage": [
+    {
+      "transactions": 1000,
+      "ledger_growth_MB": 0.38
+    },
+    {
+      "transactions": 10000,
+      "ledger_growth_MB": 3.8
+    },
+    {
+      "transactions": 100000,
+      "ledger_growth_MB": 38.0
+    },
+    {
+      "transactions": 1000000,
+      "ledger_growth_MB": 380.0
+    }
+  ],
+  "max_tx_per_block": 461
+}

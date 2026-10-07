@@ -1,0 +1,7 @@
+attack_scenario,No ACL (B0),Static RBAC (B1),Centralized ZT (B2),Proposed
+Replayed access request (stale signature),0.04,0.59,0.814,0.971
+Revoked-device continued access attempt,0.047,0.578,0.896,0.993
+Access-request flooding (DoS on PEP),0.045,0.516,0.895,0.909
+"Lateral movement (valid ID, wrong resource)",0.028,0.512,0.836,0.978
+Compromised sensor false telemetry injection,0.049,0.599,0.815,0.925
+Unauthorized time-window access attempt,0,0.578,0.846,0.96

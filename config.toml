@@ -1,0 +1,11 @@
+genesis-file="/config/genesis.json"
+rpc-http-enabled=true
+rpc-http-api=["ETH","NET","QBFT","WEB3","ADMIN"]
+rpc-http-host="0.0.0.0"
+rpc-http-cors-origins=["all"]
+rpc-ws-enabled=true
+rpc-ws-host="0.0.0.0"
+host-allowlist=["*"]
+min-gas-price=0
+p2p-host="0.0.0.0"
+logging="INFO"

@@ -1,0 +1,14 @@
+{
+  "name": "iiot-blockchain-zero-trust",
+  "version": "1.0.0",
+  "description": "Prototype implementation for 'A Blockchain-Based Zero-Trust Architecture for Secure IIoT'",
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy_contracts.js --network besu",
+    "test": "hardhat test"
+  },
+  "devDependencies": {
+    "hardhat": "^2.22.5",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0"
+  }
+}

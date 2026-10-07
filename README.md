@@ -1,12 +1,4 @@
-[docker-compose.yml](https://github.com/user-attachments/files/33148775/docker-compose.yml)
-
-
-
-
-
-
-
-[hardhat.config.js](https://github.com/user-attachments/files/33148785/hardhat.config.js)[package.json](https://github.com/user-attachments/files/33148788/package.json)[README.md](https://github.com/user-attachments/files/33148801/README.md)# Blockchain-Based Zero-Trust Architecture for IIoT — Reference Implementation
+# Blockchain-Based Zero-Trust Architecture for IIoT — Reference Implementation
 
 Reference prototype accompanying the paper *"A Blockchain-Based Zero-Trust Novel
 Architecture for Secure Industrial Internet of Things (IIoT)."* It implements:

@@ -1,0 +1,94 @@
+version: "3.8"
+
+# Blockchain-Based Zero-Trust IIoT Architecture
+# 4-node Hyperledger Besu QBFT (Byzantine fault tolerant, tolerates 1 faulty node) permissioned network.
+# Each node represents an authority domain (e.g. Plant Operator, OEM, Auditor, Regulator).
+
+x-besu-common: &besu-common
+  image: hyperledger/besu:24.7.0
+  restart: unless-stopped
+  networks:
+    - iiot-bc-net
+  volumes:
+    - ./network/genesis.json:/config/genesis.json
+    - ./network/config.toml:/config/config.toml
+
+services:
+  validator1:
+    <<: *besu-common
+    container_name: validator1
+    ports: ["8545:8545", "8546:8546", "30303:30303"]
+    volumes:
+      - ./network/genesis.json:/config/genesis.json
+      - ./network/config.toml:/config/config.toml
+      - ./network/keys/validator1:/opt/besu/keys
+    command: >
+      --config-file=/config/config.toml
+      --data-path=/opt/besu/data
+      --node-private-key-file=/opt/besu/keys/key
+      --p2p-port=30303
+      --rpc-http-port=8545
+      --rpc-ws-port=8546
+
+  validator2:
+    <<: *besu-common
+    container_name: validator2
+    ports: ["8547:8545", "8548:8546", "30304:30303"]
+    volumes:
+      - ./network/genesis.json:/config/genesis.json
+      - ./network/config.toml:/config/config.toml
+      - ./network/keys/validator2:/opt/besu/keys
+    command: >
+      --config-file=/config/config.toml
+      --data-path=/opt/besu/data
+      --node-private-key-file=/opt/besu/keys/key
+      --p2p-port=30303
+      --rpc-http-port=8545
+      --rpc-ws-port=8546
+      --bootnodes=enode://<VALIDATOR1_ENODE>@validator1:30303
+
+  validator3:
+    <<: *besu-common
+    container_name: validator3
+    ports: ["8549:8545", "8550:8546", "30305:30303"]
+    volumes:
+      - ./network/genesis.json:/config/genesis.json
+      - ./network/config.toml:/config/config.toml
+      - ./network/keys/validator3:/opt/besu/keys
+    command: >
+      --config-file=/config/config.toml
+      --data-path=/opt/besu/data
+      --node-private-key-file=/opt/besu/keys/key
+      --p2p-port=30303
+      --rpc-http-port=8545
+      --rpc-ws-port=8546
+      --bootnodes=enode://<VALIDATOR1_ENODE>@validator1:30303
+
+  validator4:
+    <<: *besu-common
+    container_name: validator4
+    ports: ["8551:8545", "8552:8546", "30306:30303"]
+    volumes:
+      - ./network/genesis.json:/config/genesis.json
+      - ./network/config.toml:/config/config.toml
+      - ./network/keys/validator4:/opt/besu/keys
+    command: >
+      --config-file=/config/config.toml
+      --data-path=/opt/besu/data
+      --node-private-key-file=/opt/besu/keys/key
+      --p2p-port=30303
+      --rpc-http-port=8545
+      --rpc-ws-port=8546
+      --bootnodes=enode://<VALIDATOR1_ENODE>@validator1:30303
+
+  mqtt-broker:
+    image: eclipse-mosquitto:2
+    container_name: mqtt-broker
+    ports: ["1883:1883"]
+    networks: [iiot-bc-net]
+    volumes:
+      - ./testbed/mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+networks:
+  iiot-bc-net:
+    driver: bridge
