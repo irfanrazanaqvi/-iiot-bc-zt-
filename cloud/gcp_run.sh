@@ -91,12 +91,22 @@ chmod +x /tmp/start.sh; setsid nohup /tmp/start.sh > /tmp/besu.log 2>&1 < /dev/n
     echo "enode: $E"; BOOT="--bootnodes=$E"
   fi
 done
-for t in $(seq 30); do
-  BN=$(ssh_ c "curl -s -X POST -H 'Content-Type: application/json' --data '{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}' http://${IP[v4]}:8545 | python3 -c 'import sys,json;print(int(json.load(sys.stdin)[\"result\"],16))'") || BN=0
-  [ "${BN:-0}" -ge 3 ] && break; sleep 6
+rpc_() { ssh_ "$1" "curl -s -m 5 -X POST -H 'Content-Type: application/json' --data '{\\"jsonrpc\\":\\"2.0\\",\\"method\\":\\"$2\\",\\"params\\":[],\\"id\\":1}' http://localhost:8545"; }
+BN=0
+for t in $(seq 40); do
+  R=$(ssh_ c "curl -s -m 5 -X POST -H 'Content-Type: application/json' --data '{\\"jsonrpc\\":\\"2.0\\",\\"method\\":\\"eth_blockNumber\\",\\"params\\":[],\\"id\\":1}' http://${IP[v4]}:8545") || R=""
+  BN=$(echo "$R" | python3 -c 'import sys,json;print(int(json.load(sys.stdin)["result"],16))' 2>/dev/null || echo 0)
+  echo "  block height via validator 4: ${BN:-0}  (try $t/40)"
+  [ "${BN:-0}" -ge 3 ] && break; sleep 5
 done
-echo "block height seen from the client via validator 4: ${BN:-0}"
-[ "${BN:-0}" -ge 3 ] || { echo "network did not start; check /tmp/besu.log on the validators"; exit 1; }
+[ "${BN:-0}" -ge 3 ] || {
+  echo; echo "network did not start. Diagnostics per validator:"
+  for k in v1 v2 v3 v4; do
+    echo "---- $k peers: $(rpc_ $k net_peerCount)   block: $(rpc_ $k eth_blockNumber)"
+    ssh_ "$k" 'tail -12 /tmp/besu.log | cut -c1-220'
+  done
+  exit 1; }
+echo "network is producing blocks"
 
 say "Deploying contracts, starting gateway, samplers and the experiment"
 RPCS="http://${IP[v1]}:8545,http://${IP[v2]}:8545,http://${IP[v3]}:8545,http://${IP[v4]}:8545"
