@@ -34,7 +34,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-say "Project: $(gcloud config get-value project 2>/dev/null)   mode: $MODE"
+PROJECT=${PROJECT:-$(gcloud config get-value project 2>/dev/null)}
+[ -n "$PROJECT" ] || PROJECT=${GOOGLE_CLOUD_PROJECT:-}
+[ -n "$PROJECT" ] || PROJECT=$(gcloud projects list --format='value(projectId)' 2>/dev/null | head -1)
+[ -n "$PROJECT" ] || { echo "No Google Cloud project found. Run: gcloud config set project YOUR_PROJECT_ID"; exit 1; }
+gcloud config set project "$PROJECT" >/dev/null 2>&1
+say "Project: $PROJECT   mode: $MODE"
 gcloud services enable compute.googleapis.com >/dev/null 2>&1
 gcloud compute firewall-rules describe iiotbc-internal >/dev/null 2>&1 || \
   gcloud compute firewall-rules create iiotbc-internal --network default --allow tcp,udp,icmp --source-ranges 10.128.0.0/9 >/dev/null 2>&1 || true
