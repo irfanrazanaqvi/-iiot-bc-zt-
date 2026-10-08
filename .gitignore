@@ -6,3 +6,4 @@ __pycache__/
 live/build/
 .venv/
 live/deployment.json
+experiments/deployment_v2.json

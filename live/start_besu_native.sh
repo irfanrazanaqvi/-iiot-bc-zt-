@@ -2,12 +2,13 @@
 # Run the 4-validator Besu 24.7.0 QBFT network WITHOUT Docker (e.g. on a cloud VM or sandbox with Java 21).
 # Usage: live/start_besu_native.sh [workdir]      (default /tmp/besu)
 set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 W=${1:-/tmp/besu}; mkdir -p "$W"; cd "$W"
 if [ ! -d besu-24.7.0 ]; then
   curl -sL -o besu.tgz https://github.com/hyperledger/besu/releases/download/24.7.0/besu-24.7.0.tar.gz && tar xzf besu.tgz
 fi
 BESU="$W/besu-24.7.0/bin/besu"; export JAVA_OPTS="${JAVA_OPTS:--Xmx700m}"
-cp "$(dirname "$(readlink -f "$0")")/../network/qbft-config.json" qbft.json
+cp "$HERE/../network/qbft-config.json" qbft.json
 [ -d net ] || "$BESU" operator generate-blockchain-config --config-file=qbft.json --to=net --private-key-file-name=key
 i=0
 for k in net/keys/*; do
