@@ -91,10 +91,10 @@ chmod +x /tmp/start.sh; setsid nohup /tmp/start.sh > /tmp/besu.log 2>&1 < /dev/n
     echo "enode: $E"; BOOT="--bootnodes=$E"
   fi
 done
-rpc_() { ssh_ "$1" "curl -s -m 5 -X POST -H 'Content-Type: application/json' --data '{\\"jsonrpc\\":\\"2.0\\",\\"method\\":\\"$2\\",\\"params\\":[],\\"id\\":1}' http://localhost:8545"; }
+rpc_() { ssh_ "$1" "curl -s -m 5 -X POST -H 'Content-Type: application/json' --data '{\"jsonrpc\":\"2.0\",\"method\":\"$2\",\"params\":[],\"id\":1}' http://localhost:8545"; }
 BN=0
 for t in $(seq 40); do
-  R=$(ssh_ c "curl -s -m 5 -X POST -H 'Content-Type: application/json' --data '{\\"jsonrpc\\":\\"2.0\\",\\"method\\":\\"eth_blockNumber\\",\\"params\\":[],\\"id\\":1}' http://${IP[v4]}:8545") || R=""
+  R=$(ssh_ c "curl -s -m 5 -X POST -H 'Content-Type: application/json' --data '{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}' http://${IP[v4]}:8545") || R=""
   BN=$(echo "$R" | python3 -c 'import sys,json;print(int(json.load(sys.stdin)["result"],16))' 2>/dev/null || echo 0)
   echo "  block height via validator 4: ${BN:-0}  (try $t/40)"
   [ "${BN:-0}" -ge 3 ] && break; sleep 5
