@@ -142,6 +142,8 @@ md.append("\n## Chain\n\n" + "\n".join(f"- {k}: {v}" for k, v in chain.items()))
 # ---------------------------------------------------------------- resource usage per phase (if samplers ran)
 samples = {}
 for f in sorted(D.glob("sampler_*.csv")):
+    if f.stat().st_size < 10:
+        continue
     s = pd.read_csv(f); host = f.stem.replace("sampler_", ""); levels = []
     for _, t in pp[pp.arch == "bcz"].iterrows():
         w = s[(s.t >= t.t_start) & (s.t <= t.t_end)]

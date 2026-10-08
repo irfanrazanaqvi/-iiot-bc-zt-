@@ -113,8 +113,13 @@ RPCS="http://${IP[v1]}:8545,http://${IP[v2]}:8545,http://${IP[v3]}:8545,http://$
 for k in "${KEYS[@]}"; do ssh_ "$k" "nohup python3 /opt/repo/experiments/sampler.py /tmp/sampler_$k.csv > /dev/null 2>&1 < /dev/null &"; done
 ssh_ c "cd /opt/repo && export NODE_PATH=/opt/nd/node_modules && openssl rand -hex 32 | sed 's/^/0x/' > /tmp/deployer.key && RPC_URL=http://${IP[v1]}:8545 DEPLOYER_PRIVATE_KEY=\$(cat /tmp/deployer.key) node experiments/deploy_v2.js" | tail -5
 ssh_ c "cd /opt/repo && GATEWAY_SEED=\$(openssl rand -hex 8) BESU_RPCS=$RPCS nohup /opt/venv/bin/python -m uvicorn experiments.gateway_multi:app --port 9000 > /tmp/gw.log 2>&1 < /dev/null &"
-sleep 20
-ssh_ c "curl -s localhost:9000/health"; echo
+GW=""
+for t in $(seq 40); do
+  GW=$(ssh_ c "curl -s -m 5 localhost:9000/health") && [ -n "$GW" ] && break
+  echo "  waiting for the gateway ($t/40)"; GW=""; sleep 5
+done
+[ -n "$GW" ] || { echo "gateway did not start. Its log:"; ssh_ c 'tail -30 /tmp/gw.log'; exit 1; }
+echo "gateway: $GW"
 ssh_ c "cd /opt/repo && mkdir -p /tmp/results && (ADMIN_PRIVATE_KEY=\$(cat /tmp/deployer.key) BESU_RPCS=http://${IP[v1]}:8545 nohup sh -c '/opt/venv/bin/python -m experiments.run_all --out /tmp/results $ARGS > /tmp/run.log 2>&1; touch /tmp/results/DONE' > /dev/null 2>&1 < /dev/null &)"
 
 say "Experiment running (progress below; the full run takes roughly 45 minutes)"
@@ -123,6 +128,12 @@ for t in $(seq 400); do
   echo "$(date +%H:%M) $(ssh_ c 'tail -1 /tmp/run.log | cut -c1-110')"; sleep 45
 done
 
+ssh_ c 'cp /tmp/run.log /tmp/gw.log /tmp/results/ 2>/dev/null'
+if ! ssh_ c 'test -f /tmp/results/meta.json'; then
+  echo "The experiment crashed. Last lines of its log:"; ssh_ c 'tail -25 /tmp/run.log | cut -c1-200'
+  echo "--- gateway log:"; ssh_ c 'tail -10 /tmp/gw.log | cut -c1-200'
+  exit 1
+fi
 say "Analysing and collecting results"
 for k in v1 v2 v3 v4; do gcloud compute scp --zone "${Z[$k]}" --quiet "$(vm $k):/tmp/sampler_$k.csv" . 2>/dev/null; done
 for k in v1 v2 v3 v4; do gcloud compute scp --zone "${Z[c]}" --quiet "sampler_$k.csv" "$(vm c):/tmp/results/" 2>/dev/null; done

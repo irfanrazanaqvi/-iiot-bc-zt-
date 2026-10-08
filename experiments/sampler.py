@@ -3,7 +3,8 @@ Usage: python3 experiments/sampler.py out.csv   (runs until killed)"""
 import csv, sys, time
 import psutil
 
-out = csv.writer(open(sys.argv[1], "w", newline=""))
+fh = open(sys.argv[1], "w", newline="", buffering=1)
+out = csv.writer(fh)
 out.writerow(["t", "sys_cpu_pct", "besu_cpu_pct", "besu_rss_mb", "py_cpu_pct", "py_rss_mb"])
 def procs(name):
     r = []
@@ -27,4 +28,4 @@ while True:
                 cpu += cache[p.pid].cpu_percent(None); rss += p.memory_info().rss / 2**20
             except psutil.Error: pass
         row += [round(cpu, 1), round(rss, 1)]
-    out.writerow(row); sys.stdout.flush()
+    out.writerow(row); fh.flush()
