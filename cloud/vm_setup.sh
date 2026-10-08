@@ -13,8 +13,10 @@ curl -sL -o besu.tgz https://github.com/hyperledger/besu/releases/download/24.7.
 tar xzf besu.tgz && rm besu.tgz
 git clone "$REPO" /opt/repo
 if [ "$ROLE" = "client" ]; then
-  apt-get install -y nodejs npm
+  apt-get install -y nodejs npm build-essential python3-dev
   mkdir -p /opt/nd && cd /opt/nd && npm install --no-audit --no-fund solc@0.8.20 ethers@6
-  pip3 install --break-system-packages web3 fastapi "uvicorn[standard]" requests pandas numpy scipy
+  python3 -m venv /opt/venv
+  /opt/venv/bin/pip install --quiet --upgrade pip
+  /opt/venv/bin/pip install --quiet web3 fastapi "uvicorn[standard]" requests pandas numpy scipy psutil
 fi
 touch /opt/ready

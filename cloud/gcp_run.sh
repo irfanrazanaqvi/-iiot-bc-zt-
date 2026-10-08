@@ -57,7 +57,7 @@ for k in "${KEYS[@]}"; do gcloud compute instances describe "$(vm $k)" --zone "$
 say "Waiting for VM setup (Java, Besu, repo)"
 for k in "${KEYS[@]}"; do
   for i in $(seq 60); do ssh_ "$k" 'test -f /opt/ready' && break; sleep 15; done
-  ssh_ "$k" 'test -f /opt/ready' || { echo "$(vm $k) did not finish setup; see /var/log/vm_setup.log"; exit 1; }
+  ssh_ "$k" 'test -f /opt/ready' || { echo "$(vm $k) did not finish setup. Last lines of its log:"; ssh_ "$k" 'tail -40 /var/log/vm_setup.log; sudo journalctl -u google-startup-scripts --no-pager | tail -15'; exit 1; }
   echo "$(vm $k) ready"
 done
 declare -A IP; for k in "${KEYS[@]}"; do IP[$k]=$(ip_ "$k"); echo "$k ${IP[$k]}"; done
@@ -92,10 +92,10 @@ say "Deploying contracts, starting gateway, samplers and the experiment"
 RPCS="http://${IP[v1]}:8545,http://${IP[v2]}:8545,http://${IP[v3]}:8545,http://${IP[v4]}:8545"
 for k in "${KEYS[@]}"; do ssh_ "$k" "nohup python3 /opt/repo/experiments/sampler.py /tmp/sampler_$k.csv > /dev/null 2>&1 < /dev/null &"; done
 ssh_ c "cd /opt/repo && export NODE_PATH=/opt/nd/node_modules && openssl rand -hex 32 | sed 's/^/0x/' > /tmp/deployer.key && RPC_URL=http://${IP[v1]}:8545 DEPLOYER_PRIVATE_KEY=\$(cat /tmp/deployer.key) node experiments/deploy_v2.js" | tail -5
-ssh_ c "cd /opt/repo && GATEWAY_SEED=\$(openssl rand -hex 8) BESU_RPCS=$RPCS nohup python3 -m uvicorn experiments.gateway_multi:app --port 9000 > /tmp/gw.log 2>&1 < /dev/null &"
+ssh_ c "cd /opt/repo && GATEWAY_SEED=\$(openssl rand -hex 8) BESU_RPCS=$RPCS nohup /opt/venv/bin/python -m uvicorn experiments.gateway_multi:app --port 9000 > /tmp/gw.log 2>&1 < /dev/null &"
 sleep 20
 ssh_ c "curl -s localhost:9000/health"; echo
-ssh_ c "cd /opt/repo && mkdir -p /tmp/results && (ADMIN_PRIVATE_KEY=\$(cat /tmp/deployer.key) BESU_RPCS=http://${IP[v1]}:8545 nohup sh -c 'python3 -m experiments.run_all --out /tmp/results $ARGS > /tmp/run.log 2>&1; touch /tmp/results/DONE' > /dev/null 2>&1 < /dev/null &)"
+ssh_ c "cd /opt/repo && mkdir -p /tmp/results && (ADMIN_PRIVATE_KEY=\$(cat /tmp/deployer.key) BESU_RPCS=http://${IP[v1]}:8545 nohup sh -c '/opt/venv/bin/python -m experiments.run_all --out /tmp/results $ARGS > /tmp/run.log 2>&1; touch /tmp/results/DONE' > /dev/null 2>&1 < /dev/null &)"
 
 say "Experiment running (progress below; the full run takes roughly 45 minutes)"
 for t in $(seq 400); do
@@ -106,7 +106,7 @@ done
 say "Analysing and collecting results"
 for k in v1 v2 v3 v4; do gcloud compute scp --zone "${Z[$k]}" --quiet "$(vm $k):/tmp/sampler_$k.csv" . 2>/dev/null; done
 for k in v1 v2 v3 v4; do gcloud compute scp --zone "${Z[c]}" --quiet "sampler_$k.csv" "$(vm c):/tmp/results/" 2>/dev/null; done
-ssh_ c 'cp /tmp/sampler_c.csv /tmp/results/sampler_c.csv; cp /opt/repo/experiments/deployment_v2.json /tmp/results/ 2>/dev/null; cd /opt/repo && python3 experiments/analyze.py /tmp/results > /tmp/results/analyze_stdout.txt 2>&1; tail -3 /tmp/results/analyze_stdout.txt'
+ssh_ c 'cp /tmp/sampler_c.csv /tmp/results/sampler_c.csv; cp /opt/repo/experiments/deployment_v2.json /tmp/results/ 2>/dev/null; cd /opt/repo && /opt/venv/bin/python experiments/analyze.py /tmp/results > /tmp/results/analyze_stdout.txt 2>&1; tail -3 /tmp/results/analyze_stdout.txt'
 rm -rf "$OUTDIR"; mkdir -p "$OUTDIR"
 gcloud compute scp --recurse --zone "${Z[c]}" --quiet "$(vm c):/tmp/results/*" "$OUTDIR/" 2>/dev/null
 ( cd "$HOME" && tar czf results_gcp.tgz "$(basename "$OUTDIR")" )
