@@ -23,7 +23,7 @@ ARGS=""; [ "$MODE" = "quick" ] && ARGS="--quick"
 
 say() { printf '\n=== %s\n' "$*"; }
 vm() { echo "$PFX-$1"; }
-ssh_() { local k=$1; shift; gcloud compute ssh "$(vm "$k")" --zone "${Z[$k]}" --quiet --command "$*" -- -o StrictHostKeyChecking=no -o ConnectTimeout=20 2>/dev/null; }
+ssh_() { local k=$1; shift; timeout 150 gcloud compute ssh "$(vm "$k")" --zone "${Z[$k]}" --quiet --command "$*" -- -o StrictHostKeyChecking=no -o ConnectTimeout=20 2>/dev/null; }
 ip_()  { gcloud compute instances describe "$(vm "$1")" --zone "${Z[$1]}" --format='get(networkInterfaces[0].networkIP)'; }
 
 cleanup() {
@@ -73,11 +73,21 @@ done
 say "Starting the four validators"
 BOOT=""
 for k in v1 v2 v3 v4; do
-  ssh_ "$k" "cd /tmp && rm -rf data && JAVA_OPTS=-Xmx3g nohup /opt/besu-24.7.0/bin/besu --data-path=/tmp/data --genesis-file=/tmp/genesis.json --node-private-key-file=/tmp/key --rpc-http-enabled --rpc-http-api=ETH,NET,QBFT,WEB3,ADMIN --rpc-http-host=0.0.0.0 --rpc-http-port=8545 --rpc-http-max-active-connections=2000 --host-allowlist='*' --p2p-host=${IP[$k]} --p2p-port=30303 --min-gas-price=0 $BOOT > /tmp/besu.log 2>&1 < /dev/null &"
+  echo "starting $k ..."
+  ssh_ "$k" "cat > /tmp/start.sh <<'EOS'
+#!/bin/bash
+cd /tmp && rm -rf data
+export JAVA_OPTS=-Xmx3g
+exec /opt/besu-24.7.0/bin/besu --data-path=/tmp/data --genesis-file=/tmp/genesis.json --node-private-key-file=/tmp/key --rpc-http-enabled --rpc-http-api=ETH,NET,QBFT,WEB3,ADMIN --rpc-http-host=0.0.0.0 --rpc-http-port=8545 --rpc-http-max-active-connections=2000 --host-allowlist=* --p2p-host=${IP[$k]} --p2p-port=30303 --min-gas-price=0 $BOOT
+EOS
+chmod +x /tmp/start.sh; setsid nohup /tmp/start.sh > /tmp/besu.log 2>&1 < /dev/null & sleep 1; echo started"
   if [ "$k" = v1 ]; then
-    for t in $(seq 30); do sleep 4
+    E=""
+    for t in $(seq 30); do sleep 5
       E=$(ssh_ v1 "curl -s -X POST -H 'Content-Type: application/json' --data '{\"jsonrpc\":\"2.0\",\"method\":\"net_enode\",\"params\":[],\"id\":1}' localhost:8545 | python3 -c 'import sys,json;print(json.load(sys.stdin)[\"result\"])'") && [ -n "$E" ] && break
+      echo "  waiting for validator 1 ($t/30)"; E=""
     done
+    [ -n "$E" ] || { echo "validator 1 did not start. Its log:"; ssh_ v1 'tail -30 /tmp/besu.log'; exit 1; }
     echo "enode: $E"; BOOT="--bootnodes=$E"
   fi
 done
