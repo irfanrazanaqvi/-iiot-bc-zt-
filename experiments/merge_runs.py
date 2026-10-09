@@ -19,3 +19,7 @@ for f in ("perf_raw.csv", "openloop_raw.csv", "security_raw.csv", "revocation_ra
     m.to_csv(out / f, index=False)
     print(f, "run1 rows kept:", len(a), "| run2 rows:", len(b), "| merged:", len(m))
 shutil.copy(r2 / "meta.json", out / "meta.json")
+for f in ("decay_raw.csv", "scale_raw.csv"):
+    for src in (r2, r1):
+        if (src / f).exists():
+            shutil.copy(src / f, out / f); break

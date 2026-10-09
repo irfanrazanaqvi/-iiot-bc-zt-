@@ -60,7 +60,8 @@ const devAddr = (id) => new ethers.Wallet(devKey(id)).address;
   const ids = [
     ...Array.from({ length: 200 }, (_, i) => `device-${i}`),
     ...Array.from({ length: R }, (_, i) => `rev-${i}`),
-    ...["sec-rev", "sec-low", "sec-tam", "sec-flood", "sec-ctrl"].flatMap((p) => Array.from({ length: R }, (_, i) => `${p}-${i}`)),
+    ...["sec-rev", "sec-low", "sec-tam", "sec-flood", "sec-ctrl", "sec-host", "dec"].flatMap((p) => Array.from({ length: R }, (_, i) => `${p}-${i}`)),
+    ...Array.from({ length: 1000 }, (_, i) => `scl-${i}`),
   ];
   for (let i = 0; i < ids.length; i += 50) {
     const rs = await Promise.all(ids.slice(i, i + 50).map((d) =>

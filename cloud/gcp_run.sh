@@ -3,18 +3,18 @@
 #
 #   git clone https://github.com/irfanrazanaqvi/-iiot-bc-zt-.git && cd -- -iiot-bc-zt-
 #   MODE=quick bash cloud/gcp_run.sh      # ~15 min smoke test first (recommended)
-#   bash cloud/gcp_run.sh                 # full run, about 60-70 min
+#   bash cloud/gcp_run.sh                 # full run, about 90 min
 #
 # Creates 4 Besu validator VMs in 4 regions (US, Belgium, Mumbai, Singapore) plus 1 client VM
 # (gateway + load generator + analysis) in Belgium, all on the default VPC (internal IPs only between
-# them), runs experiments/run_all.py for the 4 architectures, runs experiments/analyze.py, copies the
+# them), runs experiments/run_all.py for 5 architectures (no control, static RBAC, centralized ZT, hardened centralized ZT, proposed), runs experiments/analyze.py, copies the
 # results to ~/results_gcp, and DELETES every VM at exit (set KEEP=1 to keep them).
 set -uo pipefail
 MODE=${MODE:-full}
 REPO_URL=${REPO_URL:-https://github.com/irfanrazanaqvi/-iiot-bc-zt-.git}
 PFX=${PFX:-iiotbc}
 VT=${VT:-e2-standard-2}      # validator machine type
-CT=${CT:-e2-standard-2}      # client machine type
+CT=${CT:-e2-standard-4}      # client machine type (4 vCPU: runs up to 4 gateway processes plus the load generator)
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUTDIR=${OUTDIR:-$HOME/results_gcp}
 declare -A Z=( [v1]=us-central1-a [v2]=europe-west1-b [v3]=asia-south1-a [v4]=asia-southeast1-a [c]=europe-west1-b )
@@ -125,28 +125,31 @@ RPCS="http://${IP[v1]}:8545,http://${IP[v2]}:8545,http://${IP[v3]}:8545,http://$
 for k in "${KEYS[@]}"; do ssh_ "$k" "nohup python3 /opt/repo/experiments/sampler.py /tmp/sampler_$k.csv > /dev/null 2>&1 < /dev/null &"; done
 ssh_ c "sudo chmod -R a+rwX /opt/repo && cd /opt/repo && export NODE_PATH=/opt/nd/node_modules && openssl rand -hex 32 | sed 's/^/0x/' > /tmp/deployer.key && RPC_URL=http://${IP[v1]}:8545 DEPLOYER_PRIVATE_KEY=\$(cat /tmp/deployer.key) node experiments/deploy_v2.js 2>&1 | tail -8"
 ssh_ c 'test -s /opt/repo/experiments/deployment_v2.json' || { echo "contract deployment did not finish (deployment_v2.json missing). Stopping."; exit 1; }
-ssh_ c "cd /opt/repo && ulimit -n 65535 2>/dev/null; GATEWAY_SEED=\$(openssl rand -hex 8) BESU_RPCS=$RPCS WATCH_RPC=http://${IP[v2]}:8545 nohup /opt/venv/bin/python -m uvicorn experiments.gateway_multi:app --port 9000 --timeout-keep-alive 300 --backlog 4096 > /tmp/gw.log 2>&1 < /dev/null &"
+ssh_ c "openssl rand -hex 8 > /tmp/gwseed"
+for i in 0 1 2 3; do
+  ssh_ c "cd /opt/repo && ulimit -n 65535 2>/dev/null; SD=\$(cat /tmp/gwseed); [ $i -gt 0 ] && SD=\$SD-g$i; GATEWAY_SEED=\$SD BESU_RPCS=$RPCS WATCH_RPC=http://${IP[v2]}:8545 nohup /opt/venv/bin/python -m uvicorn experiments.gateway_multi:app --port \$((9000+$i)) --timeout-keep-alive 300 --backlog 4096 > /tmp/gw$i.log 2>&1 < /dev/null &"
+done
 GW=""
 for t in $(seq 40); do
-  GW=$(ssh_ c "curl -s -m 5 localhost:9000/health") && [ -n "$GW" ] && break
-  echo "  waiting for the gateway ($t/40)"; GW=""; sleep 5
+  GW=$(ssh_ c 'for p in 9000 9001 9002 9003; do curl -s -m 5 localhost:$p/health || exit 1; echo; done') && [ -n "$GW" ] && break
+  echo "  waiting for the four gateway processes ($t/40)"; GW=""; sleep 5
 done
-[ -n "$GW" ] || { echo "gateway did not start. Its log:"; ssh_ c 'tail -30 /tmp/gw.log'; exit 1; }
+[ -n "$GW" ] || { echo "gateways did not start. Log:"; ssh_ c 'tail -30 /tmp/gw0.log'; exit 1; }
 echo "gateway: $GW"
-ssh_ c "cd /opt/repo && mkdir -p /tmp/results && (ulimit -n 65535 2>/dev/null; ADMIN_PRIVATE_KEY=\$(cat /tmp/deployer.key) BESU_RPCS=http://${IP[v1]}:8545 nohup sh -c '/opt/venv/bin/python -m experiments.run_all --out /tmp/results $ARGS > /tmp/run.log 2>&1; touch /tmp/results/DONE' > /dev/null 2>&1 < /dev/null &)"
+ssh_ c "cd /opt/repo && mkdir -p /tmp/results && (ulimit -n 65535 2>/dev/null; ADMIN_PRIVATE_KEY=\$(cat /tmp/deployer.key) GATEWAY_SEED=\$(cat /tmp/gwseed) BESU_RPCS=http://${IP[v1]}:8545 nohup sh -c '/opt/venv/bin/python -m experiments.run_all --out /tmp/results --gateways http://127.0.0.1:9000,http://127.0.0.1:9001,http://127.0.0.1:9002,http://127.0.0.1:9003 $ARGS > /tmp/run.log 2>&1; touch /tmp/results/DONE' > /dev/null 2>&1 < /dev/null &)"
 
-say "Experiment running (progress below; the full run takes roughly 45 minutes)"
+say "Experiment running (progress below; the full run takes roughly 75 minutes)"
 for t in $(seq 400); do
   if ssh_ c 'test -f /tmp/results/DONE'; then break; fi
   echo "$(date +%H:%M) $(ssh_ c 'tail -1 /tmp/run.log | cut -c1-110')"; sleep 45
 done
 
-ssh_ c 'cp /tmp/run.log /tmp/gw.log /tmp/results/ 2>/dev/null'
+ssh_ c 'cp /tmp/run.log /tmp/gw0.log /tmp/results/ 2>/dev/null'
 CRASHED=0
 if ! ssh_ c 'test -f /tmp/results/meta.json'; then
   CRASHED=1
   echo "The experiment crashed. Last lines of its log:"; ssh_ c 'tail -25 /tmp/run.log | cut -c1-200'
-  echo "--- gateway log:"; ssh_ c 'tail -10 /tmp/gw.log | cut -c1-200'
+  echo "--- gateway log:"; ssh_ c 'tail -10 /tmp/gw0.log | cut -c1-200'
   echo "Partial data will still be collected below."
 fi
 say "Analysing and collecting results"

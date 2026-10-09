@@ -22,7 +22,10 @@ from experiments.common import all_ids, device_address, sign_request
 ap = argparse.ArgumentParser()
 ap.add_argument("--gateway", default="http://127.0.0.1:9000")
 ap.add_argument("--out", default="results_run")
-ap.add_argument("--archs", nargs="+", default=["b0", "b1", "b2", "bcz"])
+ap.add_argument("--archs", nargs="+", default=["b0", "b1", "b2", "b3", "bcz"])
+ap.add_argument("--gateways", default="", help="comma separated gateway URLs for the scale-out test (first one is --gateway); empty = skip")
+ap.add_argument("--scale-repeats", type=int, default=3)
+ap.add_argument("--no-decay", action="store_true")
 ap.add_argument("--perf-repeats", type=int, default=5)
 ap.add_argument("--sec-repeats", type=int, default=10)
 ap.add_argument("--open-repeats", type=int, default=3)
@@ -69,7 +72,7 @@ RETRIES = [0]
 FAILS = []
 
 
-def req(arch, dev, res_act=PLC, nonce=None, sig=None):
+def req(arch, dev, res_act=PLC, nonce=None, sig=None, base=None):
     """One access request.  A transport error (connection reset, timeout) is retried with a FRESH nonce and
     signature, so the retry is a new decision and not a replay; requests with a caller-supplied nonce (the
     replay attack) are never retried.  The round-trip time includes any retry."""
@@ -79,7 +82,7 @@ def req(arch, dev, res_act=PLC, nonce=None, sig=None):
         if not given:
             nonce, sig = sign_request(dev, AC, CHAIN, *res_act)
         try:
-            r = S.post(f"{A.gateway}/{arch}/access-request", timeout=90,
+            r = S.post(f"{base or A.gateway}/{arch}/access-request", timeout=90,
                        json={"device_id": dev, "resource": res_act[0], "action": res_act[1], "nonce": nonce, "sig": sig}).json()
             break
         except (requests.ConnectionError, requests.Timeout, ValueError):
@@ -95,8 +98,8 @@ def req(arch, dev, res_act=PLC, nonce=None, sig=None):
 
 
 def adm(arch, op, **kw):
-    if arch in ("b1", "b2"):
-        S.post(f"{A.gateway}/{arch}/admin/{op}", json=kw, timeout=30)
+    if arch in ("b1", "b2", "b3"):
+        return S.post(f"{A.gateway}/{arch}/admin/{op}", json=kw, timeout=30).json()
 
 
 def revoke(arch, dev):
@@ -126,11 +129,13 @@ PERF = Rows("perf_raw.csv", ["arch", "repeat", "concurrency", "idx", "rtt_ms", "
 OPEN = Rows("openloop_raw.csv", ["arch", "repeat", "idx", "rtt_ms", "gw_ms", "granted", "reason", "gas_used"])
 SEC = Rows("security_raw.csv", ["arch", "repeat", "scenario", "role", "idx", "granted", "reason", "rtt_ms", "extra"])
 REV = Rows("revocation_raw.csv", ["arch", "trial", "revocation_s", "timed_out"])
+DECAY = Rows("decay_raw.csv", ["arch", "dev", "kind", "t_rel", "score", "pred", "granted", "expect_grant", "reason"])
+SCALE = Rows("scale_raw.csv", ["gateways", "concurrency", "repeat", "idx", "rtt_ms", "granted", "reason", "gas_used", "t_end"])
 
 
 def seed():
     ids = all_ids()
-    for a in ("b1", "b2"):
+    for a in ("b1", "b2", "b3"):
         adm(a, "seed", ids=ids)
 
 
@@ -138,6 +143,7 @@ def phase_perf(arch, rep):
     levels = [(1, 30), (10, 100), (50, 300), (100, 500), (200, 1000)]
     if A.quick: levels = [(1, 6), (10, 20), (50, 60)]
     for c, n in levels:
+        adm(arch, "reset")   # fresh rate-limit windows: a baseline that finishes a level in seconds must not be throttled by an earlier level
         t0 = time.time()
         with ThreadPoolExecutor(c) as ex:
             res = list(ex.map(lambda i: req(arch, f"device-{i % 200}"), range(n)))
@@ -211,6 +217,21 @@ def phase_security(arch, rep):
     else:
         adm(arch, "tamper", device_id=dev); ok = "tamper_applied"
     log(arch, rep, "A7", "attack", burst(arch, dev, PLC, N), extra=ok)
+    # A8 decision-host compromise: the attacker controls the machine that runs the decision service and so holds
+    #    everything on it (database, integrity key, gateway signing keys), and tries to raise a low-trust device's score
+    dev = f"sec-host-{k}"; evidence(arch, dev, -30)
+    ok = ""
+    if arch == "bcz":
+        seed = os.environ.get("GATEWAY_SEED")
+        atk = Account.from_key(Web3.keccak(text=f"{seed}:0")) if seed else Account.create()   # a real gateway signing key
+        try:
+            rc = chain_wait(chain_tx(tm.functions.reportEvidence(device_address(dev), 70, "forged"), acct=atk))
+            ok = f"tamper_tx_status={rc['status']};gateway_key={bool(seed)}"
+        except Exception as e:  # noqa: BLE001
+            ok = "tamper_rejected:" + str(e)[:60]
+    else:
+        adm(arch, "tamper_host", device_id=dev); ok = "tamper_applied"
+    log(arch, rep, "A8", "attack", burst(arch, dev, PLC, N), extra=ok)
     # control: a legitimate device issuing a normal number of requests must be granted
     dev = f"sec-ctrl-{k}"
     log(arch, rep, "CTRL", "legit", burst(arch, dev, PLC, N))
@@ -236,6 +257,72 @@ def phase_rev(arch):
         print(arch, "revocation", k, round(first.get("t", t0 + 30) - t0, 3), flush=True)
 
 
+DECAY_UNIT_S = 6      # one "day" of decay shortened to 6 s for the validation test (contract and B2/B3 alike)
+DECAY_T0, DECAY_STEP = 50, 2   # default score and kappa of the deployed contracts
+
+
+def blk_ts(bn):
+    return int(w3.provider.make_request("eth_getBlockByNumber", [hex(bn), False])["result"]["timestamp"], 16)
+
+
+def phase_decay(arch):
+    """Validate the decay law (Eq. 1): a score re-anchored at t_last must fall by kappa per elapsed decay unit.
+    Samples the score every second for ~50 s on 6 devices; also checks the access decision before and after the crossing
+    of theta = 40 (predicted at 6 units = 36 s)."""
+    if arch == "bcz":
+        chain_wait(chain_tx(tm.functions.setDecayUnit(DECAY_UNIT_S)))
+    else:
+        adm(arch, "decay_unit", delta=DECAY_UNIT_S)
+    try:
+        def one(k):
+            dev = f"dec-{k}"; addr = device_address(dev)
+            if arch == "bcz":
+                rc = chain_wait(chain_tx(tm.functions.reportEvidence(addr, DECAY_T0 - tm.functions.getScore(addr).call(), "decay-anchor")))
+                t_last = blk_ts(rc["blockNumber"])
+            else:
+                adm(arch, "evidence", device_id=dev, delta=DECAY_T0 - adm(arch, "score", device_id=dev)["score"]); t_last = time.time()
+            t0 = time.time(); done = set()
+            while True:
+                if arch == "bcz":
+                    bn = w3.eth.block_number; now = blk_ts(bn)
+                    sc = tm.functions.getScore(addr).call(block_identifier=bn)
+                else:
+                    now = time.time(); sc = adm(arch, "score", device_id=dev)["score"]
+                rel = now - t_last
+                pred = max(0, DECAY_T0 - DECAY_STEP * int(rel // DECAY_UNIT_S)) if rel >= 0 else DECAY_T0
+                DECAY.add(arch=arch, dev=dev, kind="sample", t_rel=round(rel, 2), score=sc, pred=pred, granted="", expect_grant="", reason="")
+                for tag, at in (("pre", 30), ("post", 42)):
+                    if tag not in done and time.time() - t0 >= at - 2:   # the decision is mined ~2 s later
+                        done.add(tag); r = req(arch, dev)
+                        DECAY.add(arch=arch, dev=dev, kind="decision_" + tag, t_rel=round(time.time() - t0, 2), score="", pred="", granted=int(r["granted"]),
+                                  expect_grant=int(tag == "pre"), reason=r["reason"])
+                if time.time() - t0 > 46: break
+                time.sleep(1.0)
+        with ThreadPoolExecutor(6) as ex: list(ex.map(one, range(6)))
+        print(arch, "decay done", flush=True)
+    finally:
+        if arch == "bcz": chain_wait(chain_tx(tm.functions.setDecayUnit(86400)))
+        else: adm(arch, "decay_unit", delta=0)
+
+
+def phase_scale():
+    """Closed-loop load against BC-ZT through 1, 2 and 4 gateway processes (each with its own signing accounts)."""
+    gws = [g for g in A.gateways.split(",") if g]
+    levels = [(1, 200), (2, 200), (4, 200), (1, 400), (2, 400), (4, 400)] if not A.quick else [(1, 40), (2, 40)]
+    for G, c in levels:
+        if G > len(gws): continue
+        for rep in range(A.scale_repeats if not A.quick else 1):
+            n = c * 5 if not A.quick else 40
+            t0 = time.time()
+            with ThreadPoolExecutor(c) as ex:
+                res = list(ex.map(lambda i: req("bcz", f"scl-{(rep * n + i) % 1000}", base=gws[i % G]), range(n)))
+            PH.add(phase="scale", arch="bcz", repeat=rep, detail=f"G={G},c={c}", t_start=t0, t_end=time.time())
+            for i, r in enumerate(res):
+                SCALE.add(gateways=G, concurrency=c, repeat=rep, idx=i, rtt_ms=round(r["rtt_ms"], 2), granted=int(r["granted"]), reason=r["reason"],
+                          gas_used=r.get("gas_used", ""), t_end=r["t_end"])
+            print("scale G", G, "c", c, "rep", rep, "req/s", round(n / (time.time() - t0), 1), flush=True)
+
+
 def guarded(fn, *a):
     """Run one phase; a failure is logged and the run continues with the next phase."""
     try:
@@ -256,6 +343,10 @@ if __name__ == "__main__":
         for rep in range(A.open_repeats): guarded(phase_open, arch, rep)
         for rep in range(A.sec_repeats): guarded(phase_security, arch, rep)
         guarded(phase_rev, arch)
+    if A.gateways and "bcz" in A.archs: guarded(phase_scale)
+    if not A.no_decay:
+        for arch in A.archs:
+            if arch in ("b2", "b3", "bcz"): guarded(phase_decay, arch)
     n = w3.eth.block_number
     blocks = [w3.provider.make_request("eth_getBlockByNumber", [hex(i), False])["result"] for i in range(max(1, meta["block_start"]), n)]
     meta["blocks"] = [{"n": int(b["number"], 16), "size": int(b["size"], 16), "tx": len(b["transactions"]), "gas_used": int(b["gasUsed"], 16),

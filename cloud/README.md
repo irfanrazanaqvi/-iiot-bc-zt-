@@ -1,7 +1,7 @@
 # Distributed run on Google Cloud
 
 Four Besu QBFT validators in four regions (Iowa, Belgium, Mumbai, Singapore) and one client VM
-(gateway + load generator + analysis) in Belgium. The same gateway serves four architectures, so the
+(e2-standard-4: up to four gateway processes + load generator + analysis) in Belgium. The same gateway serves five architectures, so the
 comparison is run side by side on identical hardware:
 
 | Path | Architecture |
@@ -9,6 +9,7 @@ comparison is run side by side on identical hardware:
 | `/b0` | no access control |
 | `/b1` | static role-based access control (in-memory role table) |
 | `/b2` | centralized zero trust: same decision logic as the contract (signature, nonce, rate limit, trust, time window) in SQLite |
+| `/b3` | hardened centralized ZT: B2 plus HMAC-protected state rows (key only in the decision process) and a hash-chained audit log |
 | `/bcz` | proposed: `AccessControlManagerV2` on the Besu network |
 
 ## Run it (Google Cloud Shell)
@@ -22,7 +23,7 @@ cloudshell download ~/results_gcp.tgz
 
 The script creates the VMs, runs everything, analyzes the data, and deletes the VMs when it exits
 (`KEEP=1` keeps them; delete them yourself afterwards to stop charges).
-It needs about 10 vCPUs of quota (4 x e2-standard-2 validators + 1 x e2-standard-2 client); override with
+It needs about 12 vCPUs of quota (4 x e2-standard-2 validators + 1 x e2-standard-4 client; europe-west1 holds 6 of them); override with
 `VT=` / `CT=` machine types if your trial quota is lower.
 
 ## What is measured
@@ -30,7 +31,9 @@ It needs about 10 vCPUs of quota (4 x e2-standard-2 validators + 1 x e2-standard
 * `perf_raw.csv`: closed-loop sweep at 1, 10, 50, 100, 200 clients, 5 repeats per architecture.
 * `openloop_raw.csv`: Poisson arrivals, mean gap 0.5 s, 100 requests x 3 repeats.
 * `security_raw.csv`: A1 replay, A2 revoked identity, A3 flood by an enrolled device, A4 lateral movement,
-  A5 compromised sensor, A6 time window, A7 trust-store tampering, plus a legitimate control; 10 repeats.
+  A5 compromised sensor, A6 time window, A7 trust-store tampering (database write without the integrity key), A8 decision-host compromise (attacker holds every secret on the decision host, including the gateway signing keys), plus a legitimate control; 10 repeats.
+* `decay_raw.csv`: validation of the trust-decay law (decay unit shortened to 6 s): score sampled every second against Eq. (1), and decisions before/after the threshold crossing (B2, B3, BC-ZT).
+* `scale_raw.csv`: BC-ZT throughput through 1, 2 and 4 gateway processes at 200 and 400 clients.
 * `revocation_raw.csv`: 30 trials (time from the revoke call to the first denied decision).
 * `sampler_*.csv`: CPU and memory per VM, aligned to the phases in `phases.csv`.
 * `summary.json`, `tables.md`, `summary_*.csv`: means with 95 % confidence intervals, Wilson intervals for denial

@@ -1,12 +1,13 @@
-"""One gateway (PEP), four access-control back ends, identical request path.
+"""One gateway (PEP), five access-control back ends, identical request path.
 
   /b0/...   no access control                      (grants everything)
   /b1/...   static role-based access control       (role table in memory; no trust, time, replay or rate checks)
   /b2/...   centralized zero trust                 (same decision logic as the contract, kept in SQLite)
+  /b3/...   hardened centralized zero trust        (b2 + HMAC-protected state rows + hash-chained audit log)
   /bcz/...  proposed blockchain zero trust         (every decision is a transaction on Besu QBFT)
 
 POST /{arch}/access-request  {device_id, resource, action, nonce, sig}
-POST /{arch}/admin/{seed|revoke|evidence|tamper}   (b1 and b2 only; bcz admin goes on-chain from the harness)
+POST /{arch}/admin/{seed|revoke|evidence|tamper}   (b1, b2, b3 only; bcz admin goes on-chain from the harness)
 
 Run (repo root):  GATEWAY_SEED=<any secret> uvicorn experiments.gateway_multi:app --port 9000
 Env: BESU_RPCS=comma separated validator RPC URLs (default 127.0.0.1:8545..8548), GATEWAY_SIGNERS=64.
@@ -72,56 +73,100 @@ def decide_b1(r: Req):
     return True, "granted", {}
 
 
-# ------------------------------------------------------------------ B2 centralized ZT (same logic, SQLite state)
-_db = sqlite3.connect(":memory:", check_same_thread=False, isolation_level=None)
-_dbl = threading.Lock()
-_db.executescript("""CREATE TABLE identity(addr TEXT PRIMARY KEY, active INT);
-CREATE TABLE trust(addr TEXT PRIMARY KEY, score INT, updated REAL);
+# ------------------------------------------------------------------ B2 / B3 centralized ZT (same decision logic)
+# B2: plain SQLite state.  B3: hardened centralized service, same logic plus (i) an HMAC over every identity and trust row
+# under a key that lives only in this process, so a party that writes to the database file without the key is detected
+# (fail closed, reason "state-integrity"), and (ii) a hash-chained, append-only audit log of every decision.
+import hashlib, hmac as _hmac
+
+DECAY_UNIT = [86400.0]   # seconds per decay step; shortened only by the trust-decay validation test
+
+
+class CentralStore:
+    def __init__(self, hardened: bool):
+        self.h = hardened
+        self.key = os.urandom(32)
+        self.db = sqlite3.connect(":memory:", check_same_thread=False, isolation_level=None)
+        self.lock = threading.Lock()
+        self.last = "0" * 64
+        self.db.executescript("""CREATE TABLE identity(addr TEXT PRIMARY KEY, active INT, mac TEXT);
+CREATE TABLE trust(addr TEXT PRIMARY KEY, score INT, updated REAL, mac TEXT);
 CREATE TABLE nonce(k TEXT PRIMARY KEY);
-CREATE TABLE win(addr TEXT PRIMARY KEY, start REAL, cnt INT);""")
+CREATE TABLE win(addr TEXT PRIMARY KEY, start REAL, cnt INT);
+CREATE TABLE audit(seq INTEGER PRIMARY KEY AUTOINCREMENT, h TEXT);""")
+
+    def mac(self, *f):
+        return _hmac.new(self.key, "|".join(map(str, f)).encode(), hashlib.sha256).hexdigest() if self.h else ""
+
+    def put_identity(self, addr, active):
+        self.db.execute("INSERT OR REPLACE INTO identity VALUES(?,?,?)", (addr, active, self.mac("id", addr, active)))
+
+    def put_trust(self, addr, score, updated, forge=None):
+        self.db.execute("INSERT OR REPLACE INTO trust VALUES(?,?,?,?)", (addr, score, updated, forge if forge is not None else self.mac("tr", addr, score, updated)))
+
+    def score(self, addr, now):
+        row = self.db.execute("SELECT score, updated, mac FROM trust WHERE addr=?", (addr,)).fetchone()
+        if not row:
+            return 50
+        if self.h and not _hmac.compare_digest(row[2], self.mac("tr", addr, row[0], row[1])):
+            return None   # integrity failure
+        return max(0, row[0] - 2 * int((now - row[1]) // DECAY_UNIT[0]))
+
+    def audit(self, dev, r, granted, reason):
+        if self.h:
+            self.last = hashlib.sha256((self.last + f"{dev}|{r.resource}|{r.action}|{granted}|{reason}").encode()).hexdigest()
+            self.db.execute("INSERT INTO audit(h) VALUES(?)", (self.last,))
+
+    def decide(self, r: Req):
+        g, reason = self._decide(r)
+        self.audit(r.device_id, r, g, reason)
+        return g, reason, {}
+
+    def _decide(self, r: Req):
+        now = time.time()
+        dev = device_address(r.device_id)
+        pol = POLICIES.get((r.resource, r.action))
+        with self.lock:
+            if not pol:
+                return False, "no-policy"
+            row = self.db.execute("SELECT active, mac FROM identity WHERE addr=?", (dev,)).fetchone()
+            if self.h and row and not _hmac.compare_digest(row[1], self.mac("id", dev, row[0])):
+                return False, "state-integrity"
+            if not row or not row[0]:
+                return False, "identity-invalid"
+            if recover_signer(AC_ADDR, CHAIN_ID, dev, r.resource, r.action, r.nonce, r.sig) != dev:
+                return False, "bad-signature"
+            k = f"{dev}:{r.nonce}"
+            if self.db.execute("SELECT 1 FROM nonce WHERE k=?", (k,)).fetchone():
+                return False, "replay"
+            self.db.execute("INSERT INTO nonce VALUES(?)", (k,))
+            w = self.db.execute("SELECT start, cnt FROM win WHERE addr=?", (dev,)).fetchone()
+            start, cnt = (w if w else (0.0, 0))
+            if now >= start + WINS:
+                start, cnt = now, 0
+            cnt += 1
+            self.db.execute("INSERT OR REPLACE INTO win VALUES(?,?,?)", (dev, start, cnt))
+            if cnt > MAXW:
+                return False, "rate-limited"
+            th, f, t = pol
+            s = self.score(dev, now)
+            if s is None:
+                return False, "state-integrity"
+            if s < th:
+                return False, "insufficient-trust"
+            hour = int(now // 3600) % 24
+            if f != t:
+                ok = (f <= hour < t) if f < t else (hour >= f or hour < t)
+                if not ok:
+                    return False, "outside-time-window"
+        return True, "granted"
 
 
-def _score(addr, now):
-    row = _db.execute("SELECT score, updated FROM trust WHERE addr=?", (addr,)).fetchone()
-    if not row:
-        return 50
-    days = int((now - row[1]) // 86400)
-    return max(0, row[0] - 2 * days)
+STORES = {"b2": CentralStore(False), "b3": CentralStore(True)}
 
 
-def decide_b2(r: Req):
-    now = time.time()
-    dev = device_address(r.device_id)
-    pol = POLICIES.get((r.resource, r.action))
-    with _dbl:
-        if not pol:
-            return False, "no-policy", {}
-        row = _db.execute("SELECT active FROM identity WHERE addr=?", (dev,)).fetchone()
-        if not row or not row[0]:
-            return False, "identity-invalid", {}
-        if recover_signer(AC_ADDR, CHAIN_ID, dev, r.resource, r.action, r.nonce, r.sig) != dev:
-            return False, "bad-signature", {}
-        k = f"{dev}:{r.nonce}"
-        if _db.execute("SELECT 1 FROM nonce WHERE k=?", (k,)).fetchone():
-            return False, "replay", {}
-        _db.execute("INSERT INTO nonce VALUES(?)", (k,))
-        w = _db.execute("SELECT start, cnt FROM win WHERE addr=?", (dev,)).fetchone()
-        start, cnt = (w if w else (0.0, 0))
-        if now >= start + WINS:
-            start, cnt = now, 0
-        cnt += 1
-        _db.execute("INSERT OR REPLACE INTO win VALUES(?,?,?)", (dev, start, cnt))
-        if cnt > MAXW:
-            return False, "rate-limited", {}
-        th, f, t = pol
-        if _score(dev, now) < th:
-            return False, "insufficient-trust", {}
-        hour = int(now // 3600) % 24
-        if f != t:
-            ok = (f <= hour < t) if f < t else (hour >= f or hour < t)
-            if not ok:
-                return False, "outside-time-window", {}
-    return True, "granted", {}
+def decide_b2(r: Req): return STORES["b2"].decide(r)
+def decide_b3(r: Req): return STORES["b3"].decide(r)
 
 
 @app.post("/{arch}/admin/{op}")
@@ -133,18 +178,29 @@ def admin(arch: str, op: str, a: Admin):
             B1_ENROLLED.discard(a.device_id)
         # evidence / tamper: static RBAC has no trust state, nothing to change
         return {"ok": True}
-    if arch == "b2":
-        with _dbl:
-            if op == "seed":
-                _db.executemany("INSERT OR REPLACE INTO identity VALUES(?,1)", [(device_address(i),) for i in a.ids])
+    if arch in STORES:
+        S_ = STORES[arch]
+        with S_.lock:
+            if op == "decay_unit":
+                DECAY_UNIT[0] = float(a.delta) if a.delta > 0 else 86400.0
+            elif op == "reset":   # clear rate-limit windows and nonces between load levels
+                S_.db.execute("DELETE FROM win"); S_.db.execute("DELETE FROM nonce")
+            elif op == "seed":
+                for i in a.ids:
+                    S_.put_identity(device_address(i), 1)
             elif op == "revoke":
-                _db.execute("UPDATE identity SET active=0 WHERE addr=?", (device_address(a.device_id),))
+                S_.put_identity(device_address(a.device_id), 0)
             elif op == "evidence":
                 dev = device_address(a.device_id); now = time.time()
-                s = max(0, min(100, _score(dev, now) + a.delta))
-                _db.execute("INSERT OR REPLACE INTO trust VALUES(?,?,?)", (dev, s, now))
-            elif op == "tamper":   # insider with write access to the store sets the trust score directly
-                _db.execute("INSERT OR REPLACE INTO trust VALUES(?,?,?)", (device_address(a.device_id), 100, time.time()))
+                s = S_.score(dev, now)
+                s = max(0, min(100, (50 if s is None else s) + a.delta))
+                S_.put_trust(dev, s, now)
+            elif op == "score":
+                return {"ok": True, "score": S_.score(device_address(a.device_id), time.time())}
+            elif op == "tamper":       # writes the database file directly: no key, so no valid MAC
+                S_.put_trust(device_address(a.device_id), 100, time.time(), forge="00" * 32)
+            elif op == "tamper_host":  # the decision host is compromised: the attacker holds the key too
+                S_.put_trust(device_address(a.device_id), 100, time.time())
         return {"ok": True}
     raise HTTPException(404, "no admin API for this architecture")
 
@@ -240,7 +296,7 @@ def decide_bcz(r: Req):
     return bool(ev[0]["args"]["granted"]), ev[0]["args"]["reason"], {"gas_used": rc["gasUsed"], "block": rc["blockNumber"]}
 
 
-ARCH = {"b0": decide_b0, "b1": decide_b1, "b2": decide_b2, "bcz": decide_bcz}
+ARCH = {"b0": decide_b0, "b1": decide_b1, "b2": decide_b2, "b3": decide_b3, "bcz": decide_bcz}
 
 
 @app.post("/{arch}/access-request")

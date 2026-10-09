@@ -5,13 +5,16 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 from web3 import Web3
 
+POOLS = ("sec-rev", "sec-low", "sec-tam", "sec-flood", "sec-ctrl", "sec-host", "dec")
+SCALE_IDS = 1000  # identities for the gateway scale-out test (keeps every device under the rate limit)
 R = 40  # spare identities per security/revocation pool (must match deploy_v2.js)
 
 
 def all_ids():
     ids = [f"device-{i}" for i in range(200)] + [f"rev-{i}" for i in range(R)]
-    for p in ("sec-rev", "sec-low", "sec-tam", "sec-flood", "sec-ctrl"):
+    for p in POOLS:
         ids += [f"{p}-{i}" for i in range(R)]
+    ids += [f"scl-{i}" for i in range(SCALE_IDS)]
     return ids
 
 

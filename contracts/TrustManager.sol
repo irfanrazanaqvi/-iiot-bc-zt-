@@ -26,6 +26,9 @@ contract TrustManager {
     uint8 public constant MIN_SCORE_FOR_ACCESS = 40;
 
     address public owner;
+    /// @notice Length of one decay step in seconds (1 day by default). The owner may shorten it so that the decay
+    ///         law can be validated in minutes instead of days; production deployments keep 1 days.
+    uint256 public decayUnit = 1 days;
 
     event TrustUpdated(address indexed device, uint8 oldScore, uint8 newScore, string reason);
 
@@ -40,6 +43,12 @@ contract TrustManager {
         monitors[msg.sender] = true;
     }
 
+    function setDecayUnit(uint256 seconds_) external {
+        require(msg.sender == owner, "Only owner");
+        require(seconds_ > 0, "zero");
+        decayUnit = seconds_;
+    }
+
     function addMonitor(address _monitor) external {
         require(msg.sender == owner, "Only owner");
         monitors[_monitor] = true;
@@ -48,7 +57,7 @@ contract TrustManager {
     function _currentScore(address device) internal view returns (uint8) {
         TrustState memory t = trustOf[device];
         if (t.lastUpdated == 0) return DEFAULT_SCORE;
-        uint256 daysElapsed = (block.timestamp - t.lastUpdated) / 1 days;
+        uint256 daysElapsed = (block.timestamp - t.lastUpdated) / decayUnit;
         uint256 decay = daysElapsed * DECAY_PER_DAY;
         if (decay >= t.score) return 0;
         return uint8(t.score - decay);

@@ -13,7 +13,7 @@ import pandas as pd
 from scipy import stats
 
 D = Path(sys.argv[1])
-NAMES = {"b0": "B0 no access control", "b1": "B1 static RBAC", "b2": "B2 centralized ZT", "bcz": "Proposed BC-ZT"}
+NAMES = {"b0": "B0 no access control", "b1": "B1 static RBAC", "b2": "B2 centralized ZT", "b3": "B3 hardened ZT", "bcz": "Proposed BC-ZT"}
 meta = json.load(open(D / "meta.json"))
 out, md = {}, []
 
@@ -42,19 +42,22 @@ for (arch, c), g in perf.groupby(["arch", "concurrency"]):
     reps = []
     for rep, gr in g.groupby("repeat"):
         t = pp[(pp.arch == arch) & (pp.c == c) & (pp.repeat == rep)].iloc[0]
-        reps.append(dict(mean=gr.rtt_ms.mean(), p95=gr.rtt_ms.quantile(.95), thr=len(gr) / (t.t_end - t.t_start),
+        gg = gr[gr.granted == 1]
+        reps.append(dict(gmean=gg.rtt_ms.mean() if len(gg) else float('nan'), mean=gr.rtt_ms.mean(), p95=gr.rtt_ms.quantile(.95), thr=len(gr) / (t.t_end - t.t_start),
                          err=(gr.reason == "error").mean(), grant=gr.granted.mean()))
     r = pd.DataFrame(reps)
-    m, mh = tci(r["mean"]); th, thh = tci(r.thr)
+    m, mh = tci(r["mean"]); th, thh = tci(r.thr); gm, gmh = tci(r.gmean.dropna()) if r.gmean.notna().any() else (float('nan'), float('nan'))
+    gd = g[g.granted == 1].rtt_ms
     rows.append(dict(arch=arch, concurrency=c, repeats=len(r), mean_ms=round(m, 1), mean_ci=round(mh, 1), p50_ms=round(g.rtt_ms.median(), 1),
                      p95_ms=round(g.rtt_ms.quantile(.95), 1), max_ms=round(g.rtt_ms.max(), 1), thr_rps=round(th, 2), thr_ci=round(thh, 2),
-                     grant=round(r.grant.mean(), 3), err=round(r.err.mean(), 3)))
+                     grant=round(r.grant.mean(), 3), err=round(r.err.mean(), 3),
+                     g_mean_ms=round(gm, 1), g_mean_ci=round(gmh, 1), g_p50_ms=round(gd.median(), 1) if len(gd) else None, g_p95_ms=round(gd.quantile(.95), 1) if len(gd) else None))
 perf_t = pd.DataFrame(rows); perf_t.to_csv(D / "summary_perf.csv", index=False)
 out["perf"] = rows
 md.append("## Load sweep (closed loop; mean over repeats, 95% CI)\n")
-md.append("| Arch | Conc. | Mean (ms) | ±CI | p50 | p95 | Max | Req/s | ±CI | Grant | Err |\n|---|---|---|---|---|---|---|---|---|---|---|")
+md.append("| Arch | Conc. | Mean (ms) | ±CI | p50 | p95 | Max | Req/s | ±CI | Grant | Err | Granted-only p50 | p95 |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|")
 for r in rows:
-    md.append(f"| {NAMES[r['arch']]} | {r['concurrency']} | {r['mean_ms']} | {r['mean_ci']} | {r['p50_ms']} | {r['p95_ms']} | {r['max_ms']} | {r['thr_rps']} | {r['thr_ci']} | {r['grant']} | {r['err']} |")
+    md.append(f"| {NAMES[r['arch']]} | {r['concurrency']} | {r['mean_ms']} | {r['mean_ci']} | {r['p50_ms']} | {r['p95_ms']} | {r['max_ms']} | {r['thr_rps']} | {r['thr_ci']} | {r['grant']} | {r['err']} | {r['g_p50_ms']} | {r['g_p95_ms']} |")
 
 # ---------------------------------------------------------------- open loop
 op = pd.read_csv(D / "openloop_raw.csv"); orows = []
@@ -88,14 +91,14 @@ for (arch, sc), g in atk.groupby(["arch", "scenario"]):
     if N == 0:
         continue
     p, lo, hi = wilson(K, N)
-    res.append(dict(arch=arch, scenario=sc, denied=K, n=N, denial=round(p, 3), lo=round(lo, 3), hi=round(hi, 3), repeats=len(per)))
+    res.append(dict(arch=arch, scenario=sc, denied=K, n=N, denial=round(p, 3), lo=round(lo, 3), hi=round(hi, 3), repeats=len(per), reps_full=int(sum(1 for x in per if x >= 0.999))))
 sec_t = pd.DataFrame(res); sec_t.to_csv(D / "summary_security.csv", index=False)
 out["security"] = res
 scs = sorted(sec_t.scenario.unique()); md.append("\n## Attack denial rate (Wilson 95% CI over pooled requests)\n")
-md.append("| Scenario | " + " | ".join(NAMES[a] for a in ["b0", "b1", "b2", "bcz"] if a in set(sec_t.arch)) + " |\n|---|" + "---|" * len(set(sec_t.arch)))
+md.append("| Scenario | " + " | ".join(NAMES[a] for a in ["b0", "b1", "b2", "b3", "bcz"] if a in set(sec_t.arch)) + " |\n|---|" + "---|" * len(set(sec_t.arch)))
 for sc in scs:
     cells = []
-    for a in ["b0", "b1", "b2", "bcz"]:
+    for a in ["b0", "b1", "b2", "b3", "bcz"]:
         r = sec_t[(sec_t.arch == a) & (sec_t.scenario == sc)]
         if len(r): r = r.iloc[0]; cells.append(f"{r.denial:.1%} [{r.lo:.1%}, {r.hi:.1%}]")
     md.append(f"| {sc} | " + " | ".join(cells) + " |")
@@ -103,17 +106,29 @@ means = {a: float(sec_t[sec_t.arch == a].denial.mean()) for a in set(sec_t.arch)
 out["security_mean_denial"] = means
 md.append("\nMean over scenarios: " + "; ".join(f"{NAMES[a]} {v:.1%}" for a, v in sorted(means.items())))
 tests = {}
-for sc in scs:
-    x = sec_t[(sec_t.arch == "bcz") & (sec_t.scenario == sc)]; y = sec_t[(sec_t.arch == "b2") & (sec_t.scenario == sc)]
-    if len(x) and len(y):
-        x, y = x.iloc[0], y.iloc[0]
-        tests[sc] = float(stats.fisher_exact([[x.denied, x.n - x.denied], [y.denied, y.n - y.denied]])[1])
-out["security_fisher_bcz_vs_b2"] = tests
-md.append("\nFisher exact p, proposed vs centralized ZT: " + ", ".join(f"{k}: {v:.3g}" for k, v in tests.items()))
+for other in ("b2", "b3"):
+    if other not in set(sec_t.arch):
+        continue
+    for sc in scs:
+        x = sec_t[(sec_t.arch == "bcz") & (sec_t.scenario == sc)]; y = sec_t[(sec_t.arch == other) & (sec_t.scenario == sc)]
+        if len(x) and len(y):
+            x, y = x.iloc[0], y.iloc[0]
+            tests[f"{sc}_vs_{other}"] = dict(
+                pooled_p=float(stats.fisher_exact([[x.denied, x.n - x.denied], [y.denied, y.n - y.denied]])[1]),
+                repeat_level_p=float(stats.fisher_exact([[x.reps_full, x.repeats - x.reps_full], [y.reps_full, y.repeats - y.reps_full]])[1]),
+                bcz_repeats_fully_denied=f"{x.reps_full}/{x.repeats}", other_repeats_fully_denied=f"{y.reps_full}/{y.repeats}")
+out["security_fisher"] = tests
+md.append("\nFisher exact, proposed vs centralized (repeat-level is the valid unit; pooled treats requests as independent):\n")
+md.append("| Scenario | vs | proposed repeats fully denied | other repeats fully denied | repeat-level p | pooled p |\n|---|---|---|---|---|---|")
+for k, v in tests.items():
+    sc, o = k.split("_vs_")
+    md.append(f"| {sc} | {NAMES[o]} | {v['bcz_repeats_fully_denied']} | {v['other_repeats_fully_denied']} | {v['repeat_level_p']:.3g} | {v['pooled_p']:.3g} |")
 ctrl = sec[sec.scenario == "CTRL"]; fd = {a: float(1 - g.granted.mean()) for a, g in ctrl.groupby("arch")}
 out["control_false_deny"] = fd
 md.append("\nLegitimate control, false-deny rate: " + ", ".join(f"{NAMES[a]} {v:.1%}" for a, v in sorted(fd.items())))
-a7 = sec[(sec.scenario == "A7") & (sec.arch == "bcz")].extra.value_counts().to_dict(); out["A7_bcz_tamper_outcomes"] = a7
+for sc_ in ("A7", "A8"):
+    out[f"{sc_}_bcz_tamper_outcomes"] = sec[(sec.scenario == sc_) & (sec.arch == "bcz")].extra.value_counts().to_dict()
+out["denial_reasons_A7_A8"] = {f"{a_}/{s_}": g_.reason.value_counts().to_dict() for (a_, s_), g_ in atk[atk.scenario.isin(["A7", "A8"])].groupby(["arch", "scenario"])}
 
 # ---------------------------------------------------------------- revocation
 rv = pd.read_csv(D / "revocation_raw.csv"); rrows = []
@@ -138,6 +153,34 @@ if chain["gas_per_granted_decision"]:
     chain["capacity_decisions_per_s"] = chain["capacity_tx_per_block"] / 2.0
 out["chain"] = chain
 md.append("\n## Chain\n\n" + "\n".join(f"- {k}: {v}" for k, v in chain.items()))
+
+# ---------------------------------------------------------------- trust-decay validation (Eq. 1, decay unit shortened to 6 s)
+if (D / "decay_raw.csv").exists():
+    dc = pd.read_csv(D / "decay_raw.csv"); drows = []
+    md.append("\n## Trust-decay validation (score vs Eq. 1; decision before/after crossing theta)\n\n| Arch | Samples | Score == Eq. 1 | Max abs deviation | Steps seen | Decisions correct |\n|---|---|---|---|---|---|")
+    for arch, g in dc.groupby("arch"):
+        s = g[g.kind == "sample"].copy(); s["score"] = s.score.astype(float); s["pred"] = s.pred.astype(float)
+        d = g[g.kind != "sample"]
+        steps = sorted(s.score.unique(), reverse=True)
+        row = dict(arch=arch, samples=len(s), exact=round(float((s.score == s.pred).mean()), 3), max_dev=float((s.score - s.pred).abs().max()),
+                   distinct_scores=[int(x) for x in steps], decisions=len(d), decisions_correct=int((d.granted == d.expect_grant).sum()))
+        drows.append(row)
+        md.append(f"| {NAMES[arch]} | {row['samples']} | {row['exact']:.1%} | {row['max_dev']} | {row['distinct_scores']} | {row['decisions_correct']}/{row['decisions']} |")
+    out["decay"] = drows
+
+# ---------------------------------------------------------------- gateway scale-out for BC-ZT
+if (D / "scale_raw.csv").exists():
+    sc_ = pd.read_csv(D / "scale_raw.csv"); sp = ph[ph.phase == "scale"].copy(); srows = []
+    sp["G"] = sp.detail.str.extract(r"G=(\d+)")[0].astype(int); sp["c"] = sp.detail.str.extract(r"c=(\d+)")[0].astype(int)
+    md.append("\n## Gateway scale-out (BC-ZT, closed loop)\n\n| Gateways | Clients | Req/s | ±CI | Mean latency (ms) | p95 | Grant |\n|---|---|---|---|---|---|---|")
+    for (G, c), g in sc_.groupby(["gateways", "concurrency"]):
+        thr, lat = [], []
+        for rep, gr in g.groupby("repeat"):
+            t_ = sp[(sp.G == G) & (sp.c == c) & (sp["repeat"] == rep)].iloc[0]; thr.append(len(gr) / (t_.t_end - t_.t_start)); lat.append(gr.rtt_ms.mean())
+        tm_, th_ = tci(thr); lm_, _ = tci(lat)
+        srows.append(dict(gateways=int(G), concurrency=int(c), req_s=round(tm_, 1), ci=round(th_, 1), mean_ms=round(lm_, 0), p95_ms=round(g.rtt_ms.quantile(.95), 0), grant=round(g.granted.mean(), 3)))
+        md.append(f"| {G} | {c} | {tm_:.1f} | {th_:.1f} | {lm_:.0f} | {g.rtt_ms.quantile(.95):.0f} | {g.granted.mean():.3f} |")
+    out["scale"] = srows
 
 # ---------------------------------------------------------------- resource usage per phase (if samplers ran)
 samples = {}

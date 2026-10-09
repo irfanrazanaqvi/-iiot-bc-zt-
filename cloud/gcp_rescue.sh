@@ -36,10 +36,11 @@ chk() { ssh_ c "grep -qE \"$1\" /tmp/run.log" && echo ok || echo missing; }
 [ "$(chk '^b0 security 9 done')" = ok ] || ARCHS="$ARCHS b0"
 [ "$(chk '^b1 revocation 29 ')" = ok ] || ARCHS="$ARCHS b1"
 [ "$(chk '^b2 revocation 29 ')" = ok ] || ARCHS="$ARCHS b2"
+[ "$(chk '^b3 revocation 29 ')" = ok ] || ARCHS="$ARCHS b3"
 ARCHS="$ARCHS bcz"
 BACKEND=$(ssh_ c "/opt/venv/bin/python -c 'import eth_keys.backends as b;print(type(b.get_backend()).__name__)'")
 echo "signature backend on the client: $BACKEND"
-case "$BACKEND" in *CoinCurve*) ;; *) echo "installing the fast signature library and re-running all architectures"; ssh_ c '/opt/venv/bin/pip install --quiet coincurve' ; ARCHS="b0 b1 b2 bcz";; esac
+case "$BACKEND" in *CoinCurve*) ;; *) echo "installing the fast signature library and re-running all architectures"; ssh_ c '/opt/venv/bin/pip install --quiet coincurve' ; ARCHS="b0 b1 b2 b3 bcz";; esac
 echo "architectures to (re-)run: $ARCHS"
 
 say "Stopping the old experiment and gateway; updating the code"
