@@ -5,9 +5,9 @@ import sys, pathlib
 D=sys.argv[1].rstrip("/")+"/" if len(sys.argv)>1 else "evaluation/results_gcp/"
 OUT=sys.argv[2].rstrip("/")+"/" if len(sys.argv)>2 else D+"figures/"
 p=pd.read_csv(D+"perf_raw.csv"); s=pd.read_csv(D+"summary_security.csv"); sp=pd.read_csv(D+"summary_perf.csv")
-N={"b0":"B0 no control","b1":"B1 static RBAC","b2":"B2 centralized ZT","bcz":"Proposed BC-ZT"}
-C={"b0":"#888888","b1":"#C9A227","b2":"#B04A4A","bcz":"#1B3E7A"}
-M={"b0":"o","b1":"s","b2":"^","bcz":"D"}
+N={"b0":"B0 no control","b1":"B1 static RBAC","b2":"B2 centralized ZT","b3":"B3 hardened ZT","bcz":"Proposed BC-ZT"}
+C={"b0":"#888888","b1":"#C9A227","b2":"#B04A4A","b3":"#7A4AB0","bcz":"#1B3E7A"}
+M={"b0":"o","b1":"s","b2":"^","b3":"v","bcz":"D"}
 cs=[1,10,50,100,200]
 # fig3 latency, granted only
 fig,ax=plt.subplots(figsize=(5.2,3.6))
@@ -26,7 +26,7 @@ fig,ax=plt.subplots(figsize=(5.2,3.6))
 for a in N:
     d=sp[sp.arch==a].sort_values("concurrency") if "arch" in sp else None
     ax.plot(d.concurrency,d.thr_rps,marker=M[a],color=C[a],label=N[a])
-ax.axhline(174.5,color="#1E6B33",ls=":",label="Eq. (5) ceiling, 174.5/s")
+ax.axhline(174.0,color="#1E6B33",ls=":",label="Eq. (5) ceiling, 174.0/s")
 ax.set_yscale("log"); ax.set_xscale("log"); ax.set_xticks(cs); ax.set_xticklabels(cs)
 ax.set_xlabel("Concurrent clients"); ax.set_ylabel("Throughput (requests/s)")
 ax.legend(fontsize=7); ax.grid(alpha=.3,which="both")
@@ -58,14 +58,30 @@ a2.plot(cs,R.gw_rss,marker="s",color="#B04A4A",label="gateway process")
 a2.set_xscale("log"); a2.set_xticks(cs); a2.set_xticklabels(cs); a2.set_xlabel("Concurrent clients"); a2.set_ylabel("Resident memory (MB)"); a2.legend(fontsize=7); a2.grid(alpha=.3)
 plt.tight_layout(); plt.savefig(OUT+"fig5_cpumem.png",dpi=220,facecolor="white"); plt.close()
 # fig6 security
-sc=["A1","A2","A3","A4","A5","A6","A7"]; lab=["A1 replay","A2 revoked","A3 flood","A4 lateral","A5 low trust","A6 window","A7 tamper"]
-fig,ax=plt.subplots(figsize=(7.2,3.4)); w=.2
+sc=["A1","A2","A3","A4","A5","A6","A7","A8"]; lab=["A1 replay","A2 revoked","A3 flood","A4 lateral","A5 low trust","A6 window","A7 DB tamper","A8 host compr."]
+fig,ax=plt.subplots(figsize=(7.2,3.4)); w=.16
 for i,a in enumerate(N):
     v=[100*s[(s.arch==a)&(s.scenario==x)].denial.iloc[0] for x in sc]
-    ax.bar(np.arange(7)+(i-1.5)*w,v,w,color=C[a],label=N[a])
+    ax.bar(np.arange(8)+(i-2)*w,v,w,color=C[a],label=N[a])
     for j,y in enumerate(v):
-        if y==0: ax.text(j+(i-1.5)*w,1.5,'0',ha='center',fontsize=6,color=C[a])
-ax.set_xticks(range(7)); ax.set_xticklabels(lab,fontsize=7); ax.set_ylabel("Attacks denied (%)"); ax.set_ylim(0,112)
-ax.legend(fontsize=7,ncol=4,loc="upper center"); ax.grid(alpha=.3,axis="y")
+        if y==0: ax.text(j+(i-2)*w,1.5,'0',ha='center',fontsize=6,color=C[a])
+ax.set_xticks(range(8)); ax.set_xticklabels(lab,fontsize=7); ax.set_ylabel("Attacks denied (%)"); ax.set_ylim(0,112)
+ax.legend(fontsize=7,ncol=5,loc="upper center"); ax.grid(alpha=.3,axis="y")
 plt.tight_layout(); plt.savefig(OUT+"fig6_security.png",dpi=220,facecolor="white"); plt.close()
 print(R.round(1).to_string())
+
+# fig7 scale-out and decay
+sc_=pd.read_csv(D+"scale_raw.csv")
+ph2=ph[ph.phase=="scale"].copy()
+ph2[["gateways","concurrency"]]=ph2.detail.str.extract(r"G=(\d+),c=(\d+)").astype(int)
+cnt=sc_.groupby(["gateways","concurrency","repeat"]).size().rename("n").reset_index()
+g=cnt.merge(ph2[["gateways","concurrency","repeat","t_start","t_end"]],on=["gateways","concurrency","repeat"])
+g["rps"]=g.n/(g.t_end-g.t_start)
+fig,ax=plt.subplots(figsize=(5.2,3.4))
+for c,mk in [(200,"o"),(400,"s")]:
+    q=g[g.concurrency==c].groupby("gateways").rps.agg(["mean","std","count"])
+    ax.errorbar(q.index,q["mean"],yerr=2.26*q["std"]/np.sqrt(q["count"]),marker=mk,capsize=3,label=f"{c} clients")
+ax.axhline(174.0,color="#1E6B33",ls=":",label="Eq. (5) ceiling")
+ax.set_xticks([1,2,4]); ax.set_xlabel("Gateway processes"); ax.set_ylabel("Throughput (requests/s)"); ax.set_ylim(0,190)
+ax.legend(fontsize=7); ax.grid(alpha=.3); plt.tight_layout(); plt.savefig(OUT+"fig7_scaleout.png",dpi=220,facecolor="white"); plt.close()
+print(g.groupby(["gateways","concurrency"]).rps.mean().round(1))

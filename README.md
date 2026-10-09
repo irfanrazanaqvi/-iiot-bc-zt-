@@ -134,9 +134,9 @@ python plot_results.py --csv results.csv --out-prefix fig
 in Sections 6.5 and 7.4–7.7. Re-run against a non-blockchain baseline (e.g. a static
 ACL/RBAC gateway) to reproduce the comparative results in Section 8.4.
 
-## Results at a glance (Google Cloud, four architectures)
+## Results at a glance (Google Cloud, five architectures, single clean run)
 
-Measured on four Besu QBFT validators in four regions plus a client VM (`cloud/`, `evaluation/results_gcp/`). The proposed design denied 100 % of attack requests in seven scenarios (A1-A7); the centralized zero-trust baseline denied 100 % in A1-A6 and 0 % in A7 (trust-store tampering); static RBAC 28.6 % on average; no control 0 %. Cost: about 2.0 s per decision, 3.5 s revocation, 37.6 decisions/s at 200 clients (baselines: milliseconds, 190-245 req/s). Details and caveats: [`docs/RESULTS_SUMMARY.md`](docs/RESULTS_SUMMARY.md). The older simulation (`evaluation/results/`) and single-host run (`live/`) are historical and not used in the paper.
+Four Besu QBFT validators in four regions plus a client VM (`cloud/`, `evaluation/results_gcp/`). The proposed design denied 100 % of attack requests in all eight scenarios (A1-A8). Centralized ZT (B2) denied 100 % in A1-A6 only; a hardened centralized ZT (B3: HMAC row integrity + hash-chained audit log) also closes A7 (trust-store tampering) but, like B2, denies 0 % in A8 (decision-host compromise). Mean denial: B0 0 %, B1 25 %, B2 75 %, B3 87.5 %, BC-ZT 100 %. Trust decay matched the stepwise law exactly. Cost: about 2.0 s per decision, 3.5 s revocation, 39 decisions/s at 200 clients (about 55/s with 2-4 gateways; cause of the plateau not isolated); baselines: milliseconds, 220-246 req/s. Known caveat: the measured B3 code had an unlocked audit append (6 of 9,650 sweep requests errored), fixed afterwards. Details: [`docs/RESULTS_SUMMARY.md`](docs/RESULTS_SUMMARY.md).
 
 ## 8. Reproducing the paper's figures and results tables
 
