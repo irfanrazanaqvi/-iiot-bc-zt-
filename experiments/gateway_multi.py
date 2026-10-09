@@ -163,19 +163,37 @@ WAIT: dict = {}
 _wl = threading.Lock()
 
 
+from concurrent.futures import ThreadPoolExecutor
+
+# The watcher follows the chain through the validator nearest to the gateway (WATCH_RPC), and fetches the
+# receipts of each block in parallel, so the lookup cost is one short round trip per block and not one
+# long-distance round trip per transaction.
+WW = Web3(Web3.HTTPProvider(os.environ.get("WATCH_RPC", RPCS[0]), request_kwargs={"timeout": 60}))
+_rx = ThreadPoolExecutor(32)
+
+
+def _release(h):
+    key = bytes.fromhex(h[2:])
+    with _wl:
+        w = WAIT.get(key)
+    if not w:
+        return
+    for k in range(5):
+        try:
+            w[1] = WW.eth.get_transaction_receipt(h); w[0].set(); return
+        except Exception as e:  # noqa: BLE001
+            ERRORS["receipt:" + str(e)[:50]] += 1; time.sleep(0.05 * (k + 1))
+
+
 def _watcher():
     """One thread follows the chain head and releases requests whose transaction was mined."""
-    last = w3.eth.block_number
+    last = WW.eth.block_number
     while True:
         try:
-            head = w3.eth.block_number
+            head = WW.eth.block_number
             for n in range(last + 1, head + 1):
-                for h in w3.provider.make_request("eth_getBlockByNumber", [hex(n), False])["result"]["transactions"]:
-                    with _wl:
-                        w = WAIT.get(bytes.fromhex(h[2:]))
-                    if w:
-                        w[1] = w3.eth.get_transaction_receipt(h)
-                        w[0].set()
+                for h in WW.provider.make_request("eth_getBlockByNumber", [hex(n), False])["result"]["transactions"]:
+                    _rx.submit(_release, h)
             last = max(last, head)
         except Exception as e:  # noqa: BLE001
             ERRORS["watcher:" + str(e)[:60]] += 1
