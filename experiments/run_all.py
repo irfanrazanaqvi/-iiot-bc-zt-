@@ -65,13 +65,30 @@ def chain_wait(h):
     return w3.eth.wait_for_transaction_receipt(h, timeout=60, poll_latency=0.1)
 
 
+RETRIES = [0]
+FAILS = []
+
+
 def req(arch, dev, res_act=PLC, nonce=None, sig=None):
-    if nonce is None:
-        nonce, sig = sign_request(dev, AC, CHAIN, *res_act)
-    t0 = time.time()
-    r = S.post(f"{A.gateway}/{arch}/access-request", timeout=90,
-               json={"device_id": dev, "resource": res_act[0], "action": res_act[1], "nonce": nonce, "sig": sig}).json()
-    r["rtt_ms"] = (time.time() - t0) * 1000
+    """One access request.  A transport error (connection reset, timeout) is retried with a FRESH nonce and
+    signature, so the retry is a new decision and not a replay; requests with a caller-supplied nonce (the
+    replay attack) are never retried.  The round-trip time includes any retry."""
+    given = nonce is not None
+    t_first = time.time(); r = None
+    for attempt in range(4):
+        if not given:
+            nonce, sig = sign_request(dev, AC, CHAIN, *res_act)
+        try:
+            r = S.post(f"{A.gateway}/{arch}/access-request", timeout=90,
+                       json={"device_id": dev, "resource": res_act[0], "action": res_act[1], "nonce": nonce, "sig": sig}).json()
+            break
+        except (requests.ConnectionError, requests.Timeout, ValueError):
+            RETRIES[0] += 1
+            if given or attempt == 3:
+                r = {"granted": False, "reason": "error"}
+                break
+            time.sleep(0.3 * (attempt + 1))
+    r["rtt_ms"] = (time.time() - t_first) * 1000
     r["t_end"] = time.time()
     r["_nonce"], r["_sig"] = nonce, sig
     return r
@@ -219,19 +236,30 @@ def phase_rev(arch):
         print(arch, "revocation", k, round(first.get("t", t0 + 30) - t0, 3), flush=True)
 
 
+def guarded(fn, *a):
+    """Run one phase; a failure is logged and the run continues with the next phase."""
+    try:
+        fn(*a)
+    except Exception as e:  # noqa: BLE001
+        import traceback
+        FAILS.append(f"{fn.__name__}{a}: {type(e).__name__}: {str(e)[:120]}")
+        print("PHASE FAILED:", FAILS[-1], flush=True); traceback.print_exc()
+        time.sleep(5)
+
+
 if __name__ == "__main__":
     seed()
     meta = {"started": time.time(), "args": vars(A), "deployment": {k: D[k] for k in ("accessControl", "maxPerWindow", "windowSeconds", "closedWindow")},
             "client_version": w3.client_version, "block_start": w3.eth.block_number}
     for arch in A.archs:
-        for rep in range(A.perf_repeats): phase_perf(arch, rep)
-        for rep in range(A.open_repeats): phase_open(arch, rep)
-        for rep in range(A.sec_repeats): phase_security(arch, rep)
-        phase_rev(arch)
+        for rep in range(A.perf_repeats): guarded(phase_perf, arch, rep)
+        for rep in range(A.open_repeats): guarded(phase_open, arch, rep)
+        for rep in range(A.sec_repeats): guarded(phase_security, arch, rep)
+        guarded(phase_rev, arch)
     n = w3.eth.block_number
     blocks = [w3.provider.make_request("eth_getBlockByNumber", [hex(i), False])["result"] for i in range(max(1, meta["block_start"]), n)]
     meta["blocks"] = [{"n": int(b["number"], 16), "size": int(b["size"], 16), "tx": len(b["transactions"]), "gas_used": int(b["gasUsed"], 16),
                        "gas_limit": int(b["gasLimit"], 16), "ts": int(b["timestamp"], 16)} for b in blocks]
-    meta["finished"] = time.time()
+    meta["finished"] = time.time(); meta["retries"] = RETRIES[0]; meta["phase_failures"] = FAILS
     json.dump(meta, open(OUT / "meta.json", "w"))
-    print("done ->", OUT)
+    print("done ->", OUT, "| retries:", RETRIES[0], "| failed phases:", len(FAILS), flush=True)

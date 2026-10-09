@@ -71,6 +71,7 @@ for k in "${KEYS[@]}"; do
   fi
   echo "$(vm $k) ready"
 done
+echo "signature backend on client: $(ssh_ c "/opt/venv/bin/python -c \"import eth_keys.backends as b;print(type(b.get_backend()).__name__)\"")"
 declare -A IP; for k in "${KEYS[@]}"; do IP[$k]=$(ip_ "$k"); echo "$k ${IP[$k]}"; done
 
 say "Generating validator keys and genesis (on the client VM)"
@@ -124,7 +125,7 @@ RPCS="http://${IP[v1]}:8545,http://${IP[v2]}:8545,http://${IP[v3]}:8545,http://$
 for k in "${KEYS[@]}"; do ssh_ "$k" "nohup python3 /opt/repo/experiments/sampler.py /tmp/sampler_$k.csv > /dev/null 2>&1 < /dev/null &"; done
 ssh_ c "sudo chmod -R a+rwX /opt/repo && cd /opt/repo && export NODE_PATH=/opt/nd/node_modules && openssl rand -hex 32 | sed 's/^/0x/' > /tmp/deployer.key && RPC_URL=http://${IP[v1]}:8545 DEPLOYER_PRIVATE_KEY=\$(cat /tmp/deployer.key) node experiments/deploy_v2.js 2>&1 | tail -8"
 ssh_ c 'test -s /opt/repo/experiments/deployment_v2.json' || { echo "contract deployment did not finish (deployment_v2.json missing). Stopping."; exit 1; }
-ssh_ c "cd /opt/repo && GATEWAY_SEED=\$(openssl rand -hex 8) BESU_RPCS=$RPCS nohup /opt/venv/bin/python -m uvicorn experiments.gateway_multi:app --port 9000 > /tmp/gw.log 2>&1 < /dev/null &"
+ssh_ c "cd /opt/repo && ulimit -n 65535 2>/dev/null; GATEWAY_SEED=\$(openssl rand -hex 8) BESU_RPCS=$RPCS nohup /opt/venv/bin/python -m uvicorn experiments.gateway_multi:app --port 9000 --timeout-keep-alive 300 --backlog 4096 > /tmp/gw.log 2>&1 < /dev/null &"
 GW=""
 for t in $(seq 40); do
   GW=$(ssh_ c "curl -s -m 5 localhost:9000/health") && [ -n "$GW" ] && break
@@ -132,7 +133,7 @@ for t in $(seq 40); do
 done
 [ -n "$GW" ] || { echo "gateway did not start. Its log:"; ssh_ c 'tail -30 /tmp/gw.log'; exit 1; }
 echo "gateway: $GW"
-ssh_ c "cd /opt/repo && mkdir -p /tmp/results && (ADMIN_PRIVATE_KEY=\$(cat /tmp/deployer.key) BESU_RPCS=http://${IP[v1]}:8545 nohup sh -c '/opt/venv/bin/python -m experiments.run_all --out /tmp/results $ARGS > /tmp/run.log 2>&1; touch /tmp/results/DONE' > /dev/null 2>&1 < /dev/null &)"
+ssh_ c "cd /opt/repo && mkdir -p /tmp/results && (ulimit -n 65535 2>/dev/null; ADMIN_PRIVATE_KEY=\$(cat /tmp/deployer.key) BESU_RPCS=http://${IP[v1]}:8545 nohup sh -c '/opt/venv/bin/python -m experiments.run_all --out /tmp/results $ARGS > /tmp/run.log 2>&1; touch /tmp/results/DONE' > /dev/null 2>&1 < /dev/null &)"
 
 say "Experiment running (progress below; the full run takes roughly 45 minutes)"
 for t in $(seq 400); do
@@ -141,10 +142,12 @@ for t in $(seq 400); do
 done
 
 ssh_ c 'cp /tmp/run.log /tmp/gw.log /tmp/results/ 2>/dev/null'
+CRASHED=0
 if ! ssh_ c 'test -f /tmp/results/meta.json'; then
+  CRASHED=1
   echo "The experiment crashed. Last lines of its log:"; ssh_ c 'tail -25 /tmp/run.log | cut -c1-200'
   echo "--- gateway log:"; ssh_ c 'tail -10 /tmp/gw.log | cut -c1-200'
-  exit 1
+  echo "Partial data will still be collected below."
 fi
 say "Analysing and collecting results"
 for k in v1 v2 v3 v4; do gcloud compute scp --zone "${Z[$k]}" --quiet "$(vm $k):/tmp/sampler_$k.csv" . 2>/dev/null; done
@@ -153,6 +156,7 @@ ssh_ c 'cp /tmp/sampler_c.csv /tmp/results/sampler_c.csv; cp /opt/repo/experimen
 rm -rf "$OUTDIR"; mkdir -p "$OUTDIR"
 gcloud compute scp --recurse --zone "${Z[c]}" --quiet "$(vm c):/tmp/results/*" "$OUTDIR/" 2>/dev/null
 ( cd "$HOME" && tar czf results_gcp.tgz "$(basename "$OUTDIR")" )
+[ "$CRASHED" = 1 ] && echo "NOTE: the run crashed; the results folder holds PARTIAL data (run.log inside shows why)."
 say "DONE. Results are in $OUTDIR and $HOME/results_gcp.tgz"
 echo "Download the archive with:   cloudshell download $HOME/results_gcp.tgz"
 echo "Then send me results_gcp.tgz (or paste $OUTDIR/tables.md). The VMs are deleted automatically now."

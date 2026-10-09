@@ -18,5 +18,6 @@ if [ "$ROLE" = "client" ]; then
   python3 -m venv /opt/venv
   /opt/venv/bin/pip install --quiet --upgrade pip
   /opt/venv/bin/pip install --quiet web3 fastapi "uvicorn[standard]" requests pandas numpy scipy psutil
+  /opt/venv/bin/pip install --quiet coincurve || echo "WARNING: coincurve not installed (signature checks will be slow)"
 fi
 touch /opt/ready

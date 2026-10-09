@@ -71,7 +71,7 @@ for r in orows:
     md.append(f"| {NAMES[r['arch']]} | {r['n']} | {r['mean_ms']} | {r['ci']} | {r['p50_ms']} | {r['p95_ms']} | {r['max_ms']} | {r['grant']} |")
 
 # ---------------------------------------------------------------- security
-sec = pd.read_csv(D / "security_raw.csv"); atk = sec[sec.role == "attack"].copy()
+sec = pd.read_csv(D / "security_raw.csv"); out["security_transport_errors_excluded"] = int((sec.reason == "error").sum()); sec = sec[sec.reason != "error"]; atk = sec[sec.role == "attack"].copy()
 lim = meta["deployment"]["maxPerWindow"]
 res = []
 for (arch, sc), g in atk.groupby(["arch", "scenario"]):
