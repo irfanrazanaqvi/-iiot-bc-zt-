@@ -123,8 +123,13 @@ echo "network is producing blocks"
 say "Deploying contracts, starting gateway, samplers and the experiment"
 RPCS="http://${IP[v1]}:8545,http://${IP[v2]}:8545,http://${IP[v3]}:8545,http://${IP[v4]}:8545"
 for k in "${KEYS[@]}"; do ssh_ "$k" "nohup python3 /opt/repo/experiments/sampler.py /tmp/sampler_$k.csv > /dev/null 2>&1 < /dev/null &"; done
-ssh_ c "sudo chmod -R a+rwX /opt/repo && cd /opt/repo && export NODE_PATH=/opt/nd/node_modules && openssl rand -hex 32 | sed 's/^/0x/' > /tmp/deployer.key && RPC_URL=http://${IP[v1]}:8545 DEPLOYER_PRIVATE_KEY=\$(cat /tmp/deployer.key) node experiments/deploy_v2.js 2>&1 | tail -8"
-ssh_ c 'test -s /opt/repo/experiments/deployment_v2.json' || { echo "contract deployment did not finish (deployment_v2.json missing). Stopping."; exit 1; }
+ssh_ c "sudo chmod -R a+rwX /opt/repo && cd /opt/repo && rm -f experiments/deployment_v2.json && openssl rand -hex 32 | sed 's/^/0x/' > /tmp/deployer.key && (export NODE_PATH=/opt/nd/node_modules; RPC_URL=http://${IP[v1]}:8545 DEPLOYER_PRIVATE_KEY=\$(cat /tmp/deployer.key) nohup node experiments/deploy_v2.js > /tmp/deploy.log 2>&1 < /dev/null &)"
+echo "deploying contracts and registering 1,500 identities (takes 2-4 minutes)"
+for t in $(seq 60); do
+  ssh_ c 'test -s /opt/repo/experiments/deployment_v2.json' && break
+  echo "  deploying ($t/60): $(ssh_ c 'tail -1 /tmp/deploy.log | cut -c1-100')"; sleep 10
+done
+ssh_ c 'test -s /opt/repo/experiments/deployment_v2.json' || { echo "contract deployment did not finish. Its log:"; ssh_ c 'tail -15 /tmp/deploy.log'; exit 1; }
 ssh_ c "openssl rand -hex 8 > /tmp/gwseed"
 for i in 0 1 2 3; do
   ssh_ c "cd /opt/repo && ulimit -n 65535 2>/dev/null; SD=\$(cat /tmp/gwseed); [ $i -gt 0 ] && SD=\$SD-g$i; GATEWAY_SEED=\$SD BESU_RPCS=$RPCS WATCH_RPC=http://${IP[v2]}:8545 nohup /opt/venv/bin/python -m uvicorn experiments.gateway_multi:app --port \$((9000+$i)) --timeout-keep-alive 300 --backlog 4096 > /tmp/gw$i.log 2>&1 < /dev/null &"
