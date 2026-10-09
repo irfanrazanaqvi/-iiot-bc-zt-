@@ -51,14 +51,15 @@ python3 experiments/analyze.py results_local
 
 ## If the run is interrupted
 
-`cloud/gcp_rescue.sh` resumes on the still-running VMs: it keeps finished architectures, re-runs the unfinished ones
-(always BC-ZT), merges with `experiments/merge_runs.py`, analyzes, downloads, and deletes the VMs. The published results
-were produced this way (all four architectures in a first pass; BC-ZT re-run after the receipt-lookup fix).
+* Cloud Shell disconnected: the run keeps going on the client VM. Reopen Cloud Shell and run `bash cloud/gcp_collect.sh`; it re-attaches, waits for the run to finish, collects the results, and deletes the VMs.
+* Run failed part-way: `cloud/gcp_rescue.sh` resumes on the still-running VMs, keeps finished architectures, re-runs the unfinished ones, merges with `experiments/merge_runs.py`, analyzes, downloads, and deletes the VMs.
+
+The published results (`evaluation/results_gcp/`) come from one clean pass: all five architectures, every phase completed with no retry, restart, or discarded run.
 
 ## Known caveats of the data
 
-* B2 hits its 20-requests-per-60-s limiter in the load sweep (it finishes each level inside one window), so its grant
-  rate there is 37-48 %; compare latency on granted requests only.
-* In the A2 test of BC-ZT, the legitimate request before the revocation was denied in repeats 0-2 (state left over from
-  the first pass); attack requests are unaffected.
-* Baseline throughput is bounded by the one-process gateway, not by the policy engines.
+* Baseline throughput is bounded by the one-process gateway and the shared client VM, not by the policy engines.
+* The measured B3 code had an unlocked audit-log append (decision and audit insert were not one atomic step), which produced 6 gateway-error rows out of 9,650 in the load sweep. It is fixed in `experiments/gateway_multi.py` after the run; the attack results contain no error rows.
+* A8 follows from the design (the attacker lacks the monitor-role key on chain); A5 evidence is injected, not telemetry-derived.
+* The cause of the BC-ZT throughput plateau (about 55 req/s with 2-4 gateways) is not isolated.
+* Single deployment on cloud VMs; no replicated or fault-tolerant centralized baseline was evaluated.
