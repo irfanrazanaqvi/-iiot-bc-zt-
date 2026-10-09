@@ -1,14 +1,14 @@
 {
- "rpc": "http://10.128.0.11:8545",
- "deployer": "0x373222D5e790bC03313FB2b70747B87CA98eB504",
- "identityRegistry": "0x5fe432d4d56B167B97C1006C577a0a3ADea4Ee46",
- "trustManager": "0x2AAb548AeB4621a3C80edA1EE9E6010d52Aa682F",
- "accessControl": "0x4f5bC851E17C89f0afABeCB4d625e7e860633e62",
+ "rpc": "http://10.128.0.15:8545",
+ "deployer": "0x1fE003E5617e652a64Fa727619c896Db818EFBF7",
+ "identityRegistry": "0x3F6bD0AdaD1507AdF7C7c1487fF4d4BeA451dAD1",
+ "trustManager": "0xD06A09C21496d42F6a0C388D0416E70535A70470",
+ "accessControl": "0xED39925e876bb9961678Aa571E2154e38D035e9a",
  "maxPerWindow": 20,
  "windowSeconds": 60,
  "closedWindow": [
-  11,
-  13
+  15,
+  17
  ],
  "policies": [
   [
@@ -29,8 +29,8 @@
    "plc-line1/closed-window",
    "write",
    40,
-   11,
-   13
+   15,
+   17
   ]
  ],
  "abis": {
@@ -374,6 +374,19 @@
     "type": "function"
    },
    {
+    "inputs": [],
+    "name": "decayUnit",
+    "outputs": [
+     {
+      "internalType": "uint256",
+      "name": "",
+      "type": "uint256"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
     "inputs": [
      {
       "internalType": "address",
@@ -475,6 +488,19 @@
      }
     ],
     "name": "reportEvidence",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "uint256",
+      "name": "seconds_",
+      "type": "uint256"
+     }
+    ],
+    "name": "setDecayUnit",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

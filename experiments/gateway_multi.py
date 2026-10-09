@@ -118,15 +118,16 @@ CREATE TABLE audit(seq INTEGER PRIMARY KEY AUTOINCREMENT, h TEXT);""")
             self.db.execute("INSERT INTO audit(h) VALUES(?)", (self.last,))
 
     def decide(self, r: Req):
-        g, reason = self._decide(r)
-        self.audit(r.device_id, r, g, reason)
+        with self.lock:   # decision and audit append are one atomic step (the audit chain must be ordered)
+            g, reason = self._decide(r)
+            self.audit(r.device_id, r, g, reason)
         return g, reason, {}
 
     def _decide(self, r: Req):
         now = time.time()
         dev = device_address(r.device_id)
         pol = POLICIES.get((r.resource, r.action))
-        with self.lock:
+        if True:
             if not pol:
                 return False, "no-policy"
             row = self.db.execute("SELECT active, mac FROM identity WHERE addr=?", (dev,)).fetchone()

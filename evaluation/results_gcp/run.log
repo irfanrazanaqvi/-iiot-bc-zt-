@@ -1,0 +1,317 @@
+b0 perf 0 1 mean 4 ms; grant 1.0
+b0 perf 0 10 mean 43 ms; grant 1.0
+b0 perf 0 50 mean 143 ms; grant 1.0
+b0 perf 0 100 mean 172 ms; grant 1.0
+b0 perf 0 200 mean 219 ms; grant 1.0
+b0 perf 1 1 mean 4 ms; grant 1.0
+b0 perf 1 10 mean 39 ms; grant 1.0
+b0 perf 1 50 mean 148 ms; grant 1.0
+b0 perf 1 100 mean 155 ms; grant 1.0
+b0 perf 1 200 mean 222 ms; grant 1.0
+b0 perf 2 1 mean 4 ms; grant 1.0
+b0 perf 2 10 mean 39 ms; grant 1.0
+b0 perf 2 50 mean 136 ms; grant 1.0
+b0 perf 2 100 mean 181 ms; grant 1.0
+b0 perf 2 200 mean 210 ms; grant 1.0
+b0 perf 3 1 mean 4 ms; grant 1.0
+b0 perf 3 10 mean 40 ms; grant 1.0
+b0 perf 3 50 mean 133 ms; grant 1.0
+b0 perf 3 100 mean 173 ms; grant 1.0
+b0 perf 3 200 mean 218 ms; grant 1.0
+b0 perf 4 1 mean 4 ms; grant 1.0
+b0 perf 4 10 mean 39 ms; grant 1.0
+b0 perf 4 50 mean 131 ms; grant 1.0
+b0 perf 4 100 mean 160 ms; grant 1.0
+b0 perf 4 200 mean 231 ms; grant 1.0
+b0 security 0 done
+b0 security 1 done
+b0 security 2 done
+b0 security 3 done
+b0 security 4 done
+b0 security 5 done
+b0 security 6 done
+b0 security 7 done
+b0 security 8 done
+b0 security 9 done
+b1 perf 0 1 mean 4 ms; grant 1.0
+b1 perf 0 10 mean 38 ms; grant 1.0
+b1 perf 0 50 mean 130 ms; grant 1.0
+b1 perf 0 100 mean 179 ms; grant 1.0
+b1 perf 0 200 mean 184 ms; grant 1.0
+b1 perf 1 1 mean 4 ms; grant 1.0
+b1 perf 1 10 mean 37 ms; grant 1.0
+b1 perf 1 50 mean 142 ms; grant 1.0
+b1 perf 1 100 mean 185 ms; grant 1.0
+b1 perf 1 200 mean 192 ms; grant 1.0
+b1 perf 2 1 mean 3 ms; grant 1.0
+b1 perf 2 10 mean 37 ms; grant 1.0
+b1 perf 2 50 mean 138 ms; grant 1.0
+b1 perf 2 100 mean 170 ms; grant 1.0
+b1 perf 2 200 mean 213 ms; grant 1.0
+b1 perf 3 1 mean 4 ms; grant 1.0
+b1 perf 3 10 mean 39 ms; grant 1.0
+b1 perf 3 50 mean 138 ms; grant 1.0
+b1 perf 3 100 mean 169 ms; grant 1.0
+b1 perf 3 200 mean 203 ms; grant 1.0
+b1 perf 4 1 mean 4 ms; grant 1.0
+b1 perf 4 10 mean 38 ms; grant 1.0
+b1 perf 4 50 mean 140 ms; grant 1.0
+b1 perf 4 100 mean 172 ms; grant 1.0
+b1 perf 4 200 mean 209 ms; grant 1.0
+b1 security 0 done
+b1 security 1 done
+b1 security 2 done
+b1 security 3 done
+b1 security 4 done
+b1 security 5 done
+b1 security 6 done
+b1 security 7 done
+b1 security 8 done
+b1 security 9 done
+b1 revocation 0 0.007
+b1 revocation 1 0.007
+b1 revocation 2 0.006
+b1 revocation 3 0.006
+b1 revocation 4 0.007
+b1 revocation 5 0.006
+b1 revocation 6 0.006
+b1 revocation 7 0.006
+b1 revocation 8 0.007
+b1 revocation 9 0.006
+b1 revocation 10 0.007
+b1 revocation 11 0.007
+b1 revocation 12 0.006
+b1 revocation 13 0.007
+b1 revocation 14 0.008
+b1 revocation 15 0.006
+b1 revocation 16 0.007
+b1 revocation 17 0.006
+b1 revocation 18 0.007
+b1 revocation 19 0.007
+b1 revocation 20 0.007
+b1 revocation 21 0.007
+b1 revocation 22 0.007
+b1 revocation 23 0.006
+b1 revocation 24 0.007
+b1 revocation 25 0.008
+b1 revocation 26 0.006
+b1 revocation 27 0.007
+b1 revocation 28 0.008
+b1 revocation 29 0.007
+b2 perf 0 1 mean 5 ms; grant 1.0
+b2 perf 0 10 mean 44 ms; grant 1.0
+b2 perf 0 50 mean 172 ms; grant 1.0
+b2 perf 0 100 mean 190 ms; grant 1.0
+b2 perf 0 200 mean 234 ms; grant 1.0
+b2 perf 1 1 mean 5 ms; grant 1.0
+b2 perf 1 10 mean 40 ms; grant 1.0
+b2 perf 1 50 mean 157 ms; grant 1.0
+b2 perf 1 100 mean 213 ms; grant 1.0
+b2 perf 1 200 mean 248 ms; grant 1.0
+b2 perf 2 1 mean 5 ms; grant 1.0
+b2 perf 2 10 mean 45 ms; grant 1.0
+b2 perf 2 50 mean 155 ms; grant 1.0
+b2 perf 2 100 mean 200 ms; grant 1.0
+b2 perf 2 200 mean 241 ms; grant 1.0
+b2 perf 3 1 mean 5 ms; grant 1.0
+b2 perf 3 10 mean 43 ms; grant 1.0
+b2 perf 3 50 mean 162 ms; grant 1.0
+b2 perf 3 100 mean 194 ms; grant 1.0
+b2 perf 3 200 mean 214 ms; grant 1.0
+b2 perf 4 1 mean 5 ms; grant 1.0
+b2 perf 4 10 mean 43 ms; grant 1.0
+b2 perf 4 50 mean 154 ms; grant 1.0
+b2 perf 4 100 mean 196 ms; grant 1.0
+b2 perf 4 200 mean 210 ms; grant 1.0
+b2 security 0 done
+b2 security 1 done
+b2 security 2 done
+b2 security 3 done
+b2 security 4 done
+b2 security 5 done
+b2 security 6 done
+b2 security 7 done
+b2 security 8 done
+b2 security 9 done
+b2 revocation 0 0.007
+b2 revocation 1 0.007
+b2 revocation 2 0.006
+b2 revocation 3 0.007
+b2 revocation 4 0.008
+b2 revocation 5 0.009
+b2 revocation 6 0.007
+b2 revocation 7 0.007
+b2 revocation 8 0.007
+b2 revocation 9 0.007
+b2 revocation 10 0.007
+b2 revocation 11 0.007
+b2 revocation 12 0.007
+b2 revocation 13 0.007
+b2 revocation 14 0.008
+b2 revocation 15 0.007
+b2 revocation 16 0.007
+b2 revocation 17 0.007
+b2 revocation 18 0.007
+b2 revocation 19 0.007
+b2 revocation 20 0.007
+b2 revocation 21 0.007
+b2 revocation 22 0.007
+b2 revocation 23 0.007
+b2 revocation 24 0.007
+b2 revocation 25 0.006
+b2 revocation 26 0.007
+b2 revocation 27 0.007
+b2 revocation 28 0.007
+b2 revocation 29 0.007
+b3 perf 0 1 mean 6 ms; grant 1.0
+b3 perf 0 10 mean 42 ms; grant 1.0
+b3 perf 0 50 mean 160 ms; grant 1.0
+b3 perf 0 100 mean 203 ms; grant 1.0
+b3 perf 0 200 mean 240 ms; grant 0.999
+b3 perf 1 1 mean 6 ms; grant 1.0
+b3 perf 1 10 mean 43 ms; grant 1.0
+b3 perf 1 50 mean 162 ms; grant 1.0
+b3 perf 1 100 mean 168 ms; grant 0.998
+b3 perf 1 200 mean 222 ms; grant 0.999
+b3 perf 2 1 mean 5 ms; grant 1.0
+b3 perf 2 10 mean 40 ms; grant 1.0
+b3 perf 2 50 mean 152 ms; grant 0.997
+b3 perf 2 100 mean 193 ms; grant 1.0
+b3 perf 2 200 mean 215 ms; grant 1.0
+b3 perf 3 1 mean 6 ms; grant 1.0
+b3 perf 3 10 mean 43 ms; grant 1.0
+b3 perf 3 50 mean 166 ms; grant 1.0
+b3 perf 3 100 mean 177 ms; grant 1.0
+b3 perf 3 200 mean 236 ms; grant 0.998
+b3 perf 4 1 mean 5 ms; grant 1.0
+b3 perf 4 10 mean 42 ms; grant 1.0
+b3 perf 4 50 mean 159 ms; grant 1.0
+b3 perf 4 100 mean 184 ms; grant 1.0
+b3 perf 4 200 mean 236 ms; grant 1.0
+b3 security 0 done
+b3 security 1 done
+b3 security 2 done
+b3 security 3 done
+b3 security 4 done
+b3 security 5 done
+b3 security 6 done
+b3 security 7 done
+b3 security 8 done
+b3 security 9 done
+b3 revocation 0 0.008
+b3 revocation 1 0.007
+b3 revocation 2 0.008
+b3 revocation 3 0.008
+b3 revocation 4 0.008
+b3 revocation 5 0.007
+b3 revocation 6 0.007
+b3 revocation 7 0.007
+b3 revocation 8 0.008
+b3 revocation 9 0.007
+b3 revocation 10 0.007
+b3 revocation 11 0.007
+b3 revocation 12 0.007
+b3 revocation 13 0.008
+b3 revocation 14 0.008
+b3 revocation 15 0.007
+b3 revocation 16 0.008
+b3 revocation 17 0.008
+b3 revocation 18 0.007
+b3 revocation 19 0.007
+b3 revocation 20 0.007
+b3 revocation 21 0.007
+b3 revocation 22 0.009
+b3 revocation 23 0.01
+b3 revocation 24 0.007
+b3 revocation 25 0.007
+b3 revocation 26 0.007
+b3 revocation 27 0.007
+b3 revocation 28 0.007
+b3 revocation 29 0.008
+bcz perf 0 1 mean 1976 ms; grant 1.0
+bcz perf 0 10 mean 2021 ms; grant 1.0
+bcz perf 0 50 mean 2849 ms; grant 1.0
+bcz perf 0 100 mean 3885 ms; grant 1.0
+bcz perf 0 200 mean 4373 ms; grant 1.0
+bcz perf 1 1 mean 2038 ms; grant 1.0
+bcz perf 1 10 mean 2007 ms; grant 1.0
+bcz perf 1 50 mean 2219 ms; grant 1.0
+bcz perf 1 100 mean 3651 ms; grant 1.0
+bcz perf 1 200 mean 5304 ms; grant 1.0
+bcz perf 2 1 mean 1992 ms; grant 1.0
+bcz perf 2 10 mean 2023 ms; grant 1.0
+bcz perf 2 50 mean 2313 ms; grant 1.0
+bcz perf 2 100 mean 3771 ms; grant 1.0
+bcz perf 2 200 mean 4893 ms; grant 1.0
+bcz perf 3 1 mean 1998 ms; grant 1.0
+bcz perf 3 10 mean 2013 ms; grant 1.0
+bcz perf 3 50 mean 2241 ms; grant 1.0
+bcz perf 3 100 mean 3833 ms; grant 1.0
+bcz perf 3 200 mean 4750 ms; grant 1.0
+bcz perf 4 1 mean 1983 ms; grant 1.0
+bcz perf 4 10 mean 2003 ms; grant 1.0
+bcz perf 4 50 mean 2193 ms; grant 1.0
+bcz perf 4 100 mean 3912 ms; grant 1.0
+bcz perf 4 200 mean 4050 ms; grant 1.0
+bcz security 0 done
+bcz security 1 done
+bcz security 2 done
+bcz security 3 done
+bcz security 4 done
+bcz security 5 done
+bcz security 6 done
+bcz security 7 done
+bcz security 8 done
+bcz security 9 done
+bcz revocation 0 1.991
+bcz revocation 1 4.026
+bcz revocation 2 4.138
+bcz revocation 3 1.972
+bcz revocation 4 3.95
+bcz revocation 5 4.039
+bcz revocation 6 4.185
+bcz revocation 7 4.153
+bcz revocation 8 1.957
+bcz revocation 9 3.95
+bcz revocation 10 4.139
+bcz revocation 11 4.149
+bcz revocation 12 1.984
+bcz revocation 13 3.974
+bcz revocation 14 4.056
+bcz revocation 15 4.148
+bcz revocation 16 1.982
+bcz revocation 17 4.078
+bcz revocation 18 4.059
+bcz revocation 19 1.989
+bcz revocation 20 3.973
+bcz revocation 21 3.966
+bcz revocation 22 4.056
+bcz revocation 23 4.04
+bcz revocation 24 1.979
+bcz revocation 25 3.967
+bcz revocation 26 4.053
+bcz revocation 27 1.98
+bcz revocation 28 3.963
+bcz revocation 29 4.152
+scale G 1 c 200 rep 0 req/s 36.1
+scale G 1 c 200 rep 1 req/s 45.4
+scale G 1 c 200 rep 2 req/s 45.2
+scale G 2 c 200 rep 0 req/s 39.8
+scale G 2 c 200 rep 1 req/s 41.2
+scale G 2 c 200 rep 2 req/s 44.2
+scale G 4 c 200 rep 0 req/s 39.7
+scale G 4 c 200 rep 1 req/s 37.3
+scale G 4 c 200 rep 2 req/s 39.7
+scale G 1 c 400 rep 0 req/s 41.0
+scale G 1 c 400 rep 1 req/s 50.2
+scale G 1 c 400 rep 2 req/s 45.4
+scale G 2 c 400 rep 0 req/s 54.6
+scale G 2 c 400 rep 1 req/s 57.2
+scale G 2 c 400 rep 2 req/s 56.2
+scale G 4 c 400 rep 0 req/s 53.5
+scale G 4 c 400 rep 1 req/s 54.8
+scale G 4 c 400 rep 2 req/s 53.5
+b2 decay done
+b3 decay done
+bcz decay done
+done -> /tmp/results | retries: 0 | failed phases: 0
