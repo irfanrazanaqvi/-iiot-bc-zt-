@@ -56,8 +56,19 @@ for k in "${KEYS[@]}"; do gcloud compute instances describe "$(vm $k)" --zone "$
 
 say "Waiting for VM setup (Java, Besu, repo)"
 for k in "${KEYS[@]}"; do
-  for i in $(seq 60); do ssh_ "$k" 'test -f /opt/ready' && break; sleep 15; done
-  ssh_ "$k" 'test -f /opt/ready' || { echo "$(vm $k) did not finish setup. Last lines of its log:"; ssh_ "$k" 'tail -40 /var/log/vm_setup.log; sudo journalctl -u google-startup-scripts --no-pager | tail -15'; exit 1; }
+  ok=0
+  for i in $(seq 60); do
+    if ssh_ "$k" 'test -f /opt/ready'; then ok=1; break; fi
+    printf '.'; sleep 15
+  done
+  echo
+  if [ "$ok" != 1 ]; then
+    echo "$(vm $k) did not finish setup (or SSH to it failed). ssh error:"
+    timeout 60 gcloud compute ssh "$(vm $k)" --zone "${Z[$k]}" --quiet --command 'tail -30 /var/log/vm_setup.log' -- -o StrictHostKeyChecking=no -o ConnectTimeout=20 2>&1 | tail -15
+    echo "--- serial console of $(vm $k):"
+    gcloud compute instances get-serial-port-output "$(vm $k)" --zone "${Z[$k]}" 2>&1 | tail -25
+    exit 1
+  fi
   echo "$(vm $k) ready"
 done
 declare -A IP; for k in "${KEYS[@]}"; do IP[$k]=$(ip_ "$k"); echo "$k ${IP[$k]}"; done
