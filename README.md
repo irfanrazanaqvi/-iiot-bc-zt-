@@ -134,13 +134,9 @@ python plot_results.py --csv results.csv --out-prefix fig
 in Sections 6.5 and 7.4–7.7. Re-run against a non-blockchain baseline (e.g. a static
 ACL/RBAC gateway) to reproduce the comparative results in Section 8.4.
 
-## Results at a glance (simulation, seed 42)
+## Results at a glance (Google Cloud, four architectures)
 
-Mean correct attack denial over scenarios A1-A6: **95.6 %** proposed vs 85.0 % centralized ZT, 56.2 % static RBAC, 3.5 % no access control; latency ~1.0 s (p95 <2 s), set by QBFT block finality. These come from a seeded discrete-event simulation, not a live-network run; see `docs/RESULTS_SUMMARY.md`.
-
-## Live Besu results
-
-`live/` contains measurements from a real 4-validator Besu QBFT network (no Docker needed): load sweep, attack scenarios, revocation timing. See [`live/README.md`](live/README.md). Headline: ~1.2 s mean / 2.1 s p95 latency under random arrivals; 100 % denial in the six enforceable scenarios; revocation ~4.0 s; throughput saturated near 26-29 req/s on a 2-vCPU host.
+Measured on four Besu QBFT validators in four regions plus a client VM (`cloud/`, `evaluation/results_gcp/`). The proposed design denied 100 % of attack requests in seven scenarios (A1-A7); the centralized zero-trust baseline denied 100 % in A1-A6 and 0 % in A7 (trust-store tampering); static RBAC 28.6 % on average; no control 0 %. Cost: about 2.0 s per decision, 3.5 s revocation, 37.6 decisions/s at 200 clients (baselines: milliseconds, 190-245 req/s). Details and caveats: [`docs/RESULTS_SUMMARY.md`](docs/RESULTS_SUMMARY.md). The older simulation (`evaluation/results/`) and single-host run (`live/`) are historical and not used in the paper.
 
 ## 8. Reproducing the paper's figures and results tables
 

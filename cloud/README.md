@@ -45,3 +45,17 @@ GATEWAY_SEED=x uvicorn experiments.gateway_multi:app --port 9000 &
 ADMIN_PRIVATE_KEY=0x<key> python3 -m experiments.run_all --out results_local --quick
 python3 experiments/analyze.py results_local
 ```
+
+## If the run is interrupted
+
+`cloud/gcp_rescue.sh` resumes on the still-running VMs: it keeps finished architectures, re-runs the unfinished ones
+(always BC-ZT), merges with `experiments/merge_runs.py`, analyzes, downloads, and deletes the VMs. The published results
+were produced this way (all four architectures in a first pass; BC-ZT re-run after the receipt-lookup fix).
+
+## Known caveats of the data
+
+* B2 hits its 20-requests-per-60-s limiter in the load sweep (it finishes each level inside one window), so its grant
+  rate there is 37-48 %; compare latency on granted requests only.
+* In the A2 test of BC-ZT, the legitimate request before the revocation was denied in repeats 0-2 (state left over from
+  the first pass); attack requests are unaffected.
+* Baseline throughput is bounded by the one-process gateway, not by the policy engines.

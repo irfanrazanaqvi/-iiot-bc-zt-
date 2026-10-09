@@ -1,0 +1,856 @@
+{
+ "rpc": "http://10.128.0.11:8545",
+ "deployer": "0x373222D5e790bC03313FB2b70747B87CA98eB504",
+ "identityRegistry": "0x5fe432d4d56B167B97C1006C577a0a3ADea4Ee46",
+ "trustManager": "0x2AAb548AeB4621a3C80edA1EE9E6010d52Aa682F",
+ "accessControl": "0x4f5bC851E17C89f0afABeCB4d625e7e860633e62",
+ "maxPerWindow": 20,
+ "windowSeconds": 60,
+ "closedWindow": [
+  11,
+  13
+ ],
+ "policies": [
+  [
+   "plc-line1/setpoint",
+   "write",
+   40,
+   0,
+   0
+  ],
+  [
+   "relay-feeder7/firmware",
+   "write",
+   70,
+   0,
+   0
+  ],
+  [
+   "plc-line1/closed-window",
+   "write",
+   40,
+   11,
+   13
+  ]
+ ],
+ "abis": {
+  "identityRegistry": [
+   {
+    "inputs": [],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+   },
+   {
+    "anonymous": false,
+    "inputs": [
+     {
+      "indexed": true,
+      "internalType": "address",
+      "name": "device",
+      "type": "address"
+     },
+     {
+      "indexed": false,
+      "internalType": "string",
+      "name": "deviceType",
+      "type": "string"
+     },
+     {
+      "indexed": false,
+      "internalType": "uint256",
+      "name": "timestamp",
+      "type": "uint256"
+     }
+    ],
+    "name": "DeviceRegistered",
+    "type": "event"
+   },
+   {
+    "anonymous": false,
+    "inputs": [
+     {
+      "indexed": true,
+      "internalType": "address",
+      "name": "device",
+      "type": "address"
+     },
+     {
+      "indexed": false,
+      "internalType": "uint256",
+      "name": "timestamp",
+      "type": "uint256"
+     }
+    ],
+    "name": "DeviceRevoked",
+    "type": "event"
+   },
+   {
+    "anonymous": false,
+    "inputs": [
+     {
+      "indexed": true,
+      "internalType": "address",
+      "name": "device",
+      "type": "address"
+     },
+     {
+      "indexed": false,
+      "internalType": "string",
+      "name": "newFirmwareHash",
+      "type": "string"
+     }
+    ],
+    "name": "FirmwareUpdated",
+    "type": "event"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "_registrar",
+      "type": "address"
+     }
+    ],
+    "name": "addRegistrar",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "_device",
+      "type": "address"
+     }
+    ],
+    "name": "getIdentity",
+    "outputs": [
+     {
+      "components": [
+       {
+        "internalType": "address",
+        "name": "deviceAddress",
+        "type": "address"
+       },
+       {
+        "internalType": "bytes32",
+        "name": "publicKeyHash",
+        "type": "bytes32"
+       },
+       {
+        "internalType": "string",
+        "name": "deviceType",
+        "type": "string"
+       },
+       {
+        "internalType": "string",
+        "name": "firmwareHash",
+        "type": "string"
+       },
+       {
+        "internalType": "uint256",
+        "name": "registeredAt",
+        "type": "uint256"
+       },
+       {
+        "internalType": "bool",
+        "name": "active",
+        "type": "bool"
+       }
+      ],
+      "internalType": "struct IdentityRegistry.DeviceIdentity",
+      "name": "",
+      "type": "tuple"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "_device",
+      "type": "address"
+     }
+    ],
+    "name": "isActive",
+    "outputs": [
+     {
+      "internalType": "bool",
+      "name": "",
+      "type": "bool"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+     {
+      "internalType": "address",
+      "name": "",
+      "type": "address"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "_device",
+      "type": "address"
+     },
+     {
+      "internalType": "bytes32",
+      "name": "_publicKeyHash",
+      "type": "bytes32"
+     },
+     {
+      "internalType": "string",
+      "name": "_deviceType",
+      "type": "string"
+     },
+     {
+      "internalType": "string",
+      "name": "_firmwareHash",
+      "type": "string"
+     }
+    ],
+    "name": "registerDevice",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "",
+      "type": "address"
+     }
+    ],
+    "name": "registrars",
+    "outputs": [
+     {
+      "internalType": "bool",
+      "name": "",
+      "type": "bool"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "_device",
+      "type": "address"
+     }
+    ],
+    "name": "revokeDevice",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "_device",
+      "type": "address"
+     },
+     {
+      "internalType": "string",
+      "name": "_newHash",
+      "type": "string"
+     }
+    ],
+    "name": "updateFirmwareHash",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+   }
+  ],
+  "trustManager": [
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "_identityRegistry",
+      "type": "address"
+     }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+   },
+   {
+    "anonymous": false,
+    "inputs": [
+     {
+      "indexed": true,
+      "internalType": "address",
+      "name": "device",
+      "type": "address"
+     },
+     {
+      "indexed": false,
+      "internalType": "uint8",
+      "name": "oldScore",
+      "type": "uint8"
+     },
+     {
+      "indexed": false,
+      "internalType": "uint8",
+      "name": "newScore",
+      "type": "uint8"
+     },
+     {
+      "indexed": false,
+      "internalType": "string",
+      "name": "reason",
+      "type": "string"
+     }
+    ],
+    "name": "TrustUpdated",
+    "type": "event"
+   },
+   {
+    "inputs": [],
+    "name": "DECAY_PER_DAY",
+    "outputs": [
+     {
+      "internalType": "uint8",
+      "name": "",
+      "type": "uint8"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [],
+    "name": "DEFAULT_SCORE",
+    "outputs": [
+     {
+      "internalType": "uint8",
+      "name": "",
+      "type": "uint8"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [],
+    "name": "MIN_SCORE_FOR_ACCESS",
+    "outputs": [
+     {
+      "internalType": "uint8",
+      "name": "",
+      "type": "uint8"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "_monitor",
+      "type": "address"
+     }
+    ],
+    "name": "addMonitor",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "device",
+      "type": "address"
+     }
+    ],
+    "name": "getScore",
+    "outputs": [
+     {
+      "internalType": "uint8",
+      "name": "",
+      "type": "uint8"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [],
+    "name": "identityRegistry",
+    "outputs": [
+     {
+      "internalType": "contract IdentityRegistry",
+      "name": "",
+      "type": "address"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "device",
+      "type": "address"
+     }
+    ],
+    "name": "isTrusted",
+    "outputs": [
+     {
+      "internalType": "bool",
+      "name": "",
+      "type": "bool"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "",
+      "type": "address"
+     }
+    ],
+    "name": "monitors",
+    "outputs": [
+     {
+      "internalType": "bool",
+      "name": "",
+      "type": "bool"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+     {
+      "internalType": "address",
+      "name": "",
+      "type": "address"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "device",
+      "type": "address"
+     },
+     {
+      "internalType": "int16",
+      "name": "delta",
+      "type": "int16"
+     },
+     {
+      "internalType": "string",
+      "name": "reason",
+      "type": "string"
+     }
+    ],
+    "name": "reportEvidence",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "",
+      "type": "address"
+     }
+    ],
+    "name": "trustOf",
+    "outputs": [
+     {
+      "internalType": "uint8",
+      "name": "score",
+      "type": "uint8"
+     },
+     {
+      "internalType": "uint256",
+      "name": "lastUpdated",
+      "type": "uint256"
+     },
+     {
+      "internalType": "uint32",
+      "name": "anomalyCount",
+      "type": "uint32"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   }
+  ],
+  "accessControl": [
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "_identityRegistry",
+      "type": "address"
+     },
+     {
+      "internalType": "address",
+      "name": "_trustManager",
+      "type": "address"
+     },
+     {
+      "internalType": "uint32",
+      "name": "_maxPerWindow",
+      "type": "uint32"
+     },
+     {
+      "internalType": "uint32",
+      "name": "_windowSeconds",
+      "type": "uint32"
+     }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+   },
+   {
+    "anonymous": false,
+    "inputs": [
+     {
+      "indexed": true,
+      "internalType": "address",
+      "name": "device",
+      "type": "address"
+     },
+     {
+      "indexed": false,
+      "internalType": "bytes32",
+      "name": "resource",
+      "type": "bytes32"
+     },
+     {
+      "indexed": false,
+      "internalType": "bytes32",
+      "name": "action",
+      "type": "bytes32"
+     },
+     {
+      "indexed": false,
+      "internalType": "bool",
+      "name": "granted",
+      "type": "bool"
+     },
+     {
+      "indexed": false,
+      "internalType": "string",
+      "name": "reason",
+      "type": "string"
+     }
+    ],
+    "name": "AccessDecision",
+    "type": "event"
+   },
+   {
+    "anonymous": false,
+    "inputs": [
+     {
+      "indexed": false,
+      "internalType": "bytes32",
+      "name": "resource",
+      "type": "bytes32"
+     },
+     {
+      "indexed": false,
+      "internalType": "bytes32",
+      "name": "action",
+      "type": "bytes32"
+     },
+     {
+      "indexed": false,
+      "internalType": "uint8",
+      "name": "minTrustScore",
+      "type": "uint8"
+     }
+    ],
+    "name": "PolicySet",
+    "type": "event"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "device",
+      "type": "address"
+     },
+     {
+      "internalType": "string",
+      "name": "resource",
+      "type": "string"
+     },
+     {
+      "internalType": "string",
+      "name": "action",
+      "type": "string"
+     },
+     {
+      "internalType": "uint256",
+      "name": "nonce",
+      "type": "uint256"
+     },
+     {
+      "internalType": "bytes",
+      "name": "signature",
+      "type": "bytes"
+     }
+    ],
+    "name": "checkAccess",
+    "outputs": [
+     {
+      "internalType": "bool",
+      "name": "granted",
+      "type": "bool"
+     }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "device",
+      "type": "address"
+     },
+     {
+      "internalType": "bytes32",
+      "name": "r",
+      "type": "bytes32"
+     },
+     {
+      "internalType": "bytes32",
+      "name": "a",
+      "type": "bytes32"
+     },
+     {
+      "internalType": "uint256",
+      "name": "nonce",
+      "type": "uint256"
+     }
+    ],
+    "name": "digest",
+    "outputs": [
+     {
+      "internalType": "bytes32",
+      "name": "",
+      "type": "bytes32"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [],
+    "name": "identityRegistry",
+    "outputs": [
+     {
+      "internalType": "contract IdentityRegistry",
+      "name": "",
+      "type": "address"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [],
+    "name": "maxPerWindow",
+    "outputs": [
+     {
+      "internalType": "uint32",
+      "name": "",
+      "type": "uint32"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "bytes32",
+      "name": "",
+      "type": "bytes32"
+     },
+     {
+      "internalType": "bytes32",
+      "name": "",
+      "type": "bytes32"
+     }
+    ],
+    "name": "policies",
+    "outputs": [
+     {
+      "internalType": "uint8",
+      "name": "minTrustScore",
+      "type": "uint8"
+     },
+     {
+      "internalType": "bool",
+      "name": "exists",
+      "type": "bool"
+     },
+     {
+      "internalType": "uint32",
+      "name": "validFromHour",
+      "type": "uint32"
+     },
+     {
+      "internalType": "uint32",
+      "name": "validToHour",
+      "type": "uint32"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [],
+    "name": "policyAdmin",
+    "outputs": [
+     {
+      "internalType": "address",
+      "name": "",
+      "type": "address"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "string",
+      "name": "resource",
+      "type": "string"
+     },
+     {
+      "internalType": "string",
+      "name": "action",
+      "type": "string"
+     },
+     {
+      "internalType": "uint8",
+      "name": "minTrustScore",
+      "type": "uint8"
+     },
+     {
+      "internalType": "uint32",
+      "name": "validFromHour",
+      "type": "uint32"
+     },
+     {
+      "internalType": "uint32",
+      "name": "validToHour",
+      "type": "uint32"
+     }
+    ],
+    "name": "setPolicy",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+   },
+   {
+    "inputs": [],
+    "name": "trustManager",
+    "outputs": [
+     {
+      "internalType": "contract TrustManager",
+      "name": "",
+      "type": "address"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "bytes32",
+      "name": "",
+      "type": "bytes32"
+     }
+    ],
+    "name": "usedNonce",
+    "outputs": [
+     {
+      "internalType": "bool",
+      "name": "",
+      "type": "bool"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [],
+    "name": "windowSeconds",
+    "outputs": [
+     {
+      "internalType": "uint32",
+      "name": "",
+      "type": "uint32"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   },
+   {
+    "inputs": [
+     {
+      "internalType": "address",
+      "name": "",
+      "type": "address"
+     }
+    ],
+    "name": "windows",
+    "outputs": [
+     {
+      "internalType": "uint64",
+      "name": "start",
+      "type": "uint64"
+     },
+     {
+      "internalType": "uint32",
+      "name": "count",
+      "type": "uint32"
+     }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+   }
+  ]
+ }
+}
