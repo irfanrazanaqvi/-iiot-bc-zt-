@@ -29,3 +29,8 @@ A8 vs B2/B3: 10/10 vs 0/10 repeats, Fisher p = 1.1e-5. A8 is by construction (at
 
 ## Caveats
 Single deployment on cloud VMs; no replicated/BFT centralized baseline; A5 evidence is injected, not telemetry-derived; B3 code in the run had an unlocked audit append (6 error rows of 9,650 in the sweep), fixed in the repo afterwards.
+
+## Offline studies (simulation, no chain; `experiments/offline_calibration.py`, `evaluation/results_offline/`)
+- Decay sensitivity (kappa, tau, theta, attestation interval): with the deployed kappa=2, tau=1 day, a silently compromised device (score 90) stays authorized 11 days at theta=70 (26 days at theta=40); tau=6 h gives 66 h (156 h) with no false denies when healthy devices attest at least every 6 h, but 74 % false denies if they attest only daily.
+- Telemetry-derived evidence (synthetic vibration telemetry, EWMA detector, -20 trust per alarm, at most one per 60 s): at limit 5 sigma a 3-sigma mean shift is detected in 100 % of trials (median 195 s), device denied about 200-360 s after onset; 0.2 false alarm reports per device-day (2-6 % of healthy device-days denied); slow drift (1 sd/hour) detected in only 10 %.
+- Assumptions are synthetic; these are simulations, not measurements.
