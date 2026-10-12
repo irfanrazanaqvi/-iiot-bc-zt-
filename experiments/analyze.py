@@ -13,7 +13,7 @@ import pandas as pd
 from scipy import stats
 
 D = Path(sys.argv[1])
-NAMES = {"b0": "B0 no access control", "b1": "B1 static RBAC", "b2": "B2 centralized ZT", "b3": "B3 hardened ZT", "bcz": "Proposed BC-ZT"}
+NAMES = {"b0": "B0 no access control", "b1": "B1 static RBAC", "b2": "B2 centralized ZT", "b3": "B3 hardened ZT", "b4": "B4 replicated ZT (4 replicas, quorum 3)", "bcz": "Proposed BC-ZT"}
 meta = json.load(open(D / "meta.json"))
 out, md = {}, []
 
@@ -95,18 +95,20 @@ for (arch, sc), g in atk.groupby(["arch", "scenario"]):
 sec_t = pd.DataFrame(res); sec_t.to_csv(D / "summary_security.csv", index=False)
 out["security"] = res
 scs = sorted(sec_t.scenario.unique()); md.append("\n## Attack denial rate (Wilson 95% CI over pooled requests)\n")
-md.append("| Scenario | " + " | ".join(NAMES[a] for a in ["b0", "b1", "b2", "b3", "bcz"] if a in set(sec_t.arch)) + " |\n|---|" + "---|" * len(set(sec_t.arch)))
+md.append("| Scenario | " + " | ".join(NAMES[a] for a in ["b0", "b1", "b2", "b3", "b4", "bcz"] if a in set(sec_t.arch)) + " |\n|---|" + "---|" * len(set(sec_t.arch)))
 for sc in scs:
     cells = []
-    for a in ["b0", "b1", "b2", "b3", "bcz"]:
+    for a in ["b0", "b1", "b2", "b3", "b4", "bcz"]:
+        if a not in set(sec_t.arch): continue
         r = sec_t[(sec_t.arch == a) & (sec_t.scenario == sc)]
         if len(r): r = r.iloc[0]; cells.append(f"{r.denial:.1%} [{r.lo:.1%}, {r.hi:.1%}]")
+        else: cells.append("n/a")
     md.append(f"| {sc} | " + " | ".join(cells) + " |")
-means = {a: float(sec_t[sec_t.arch == a].denial.mean()) for a in set(sec_t.arch)}
+means = {a: float(sec_t[(sec_t.arch == a) & sec_t.scenario.isin([f"A{i}" for i in range(1, 9)])].denial.mean()) for a in set(sec_t.arch)}   # A1-A8 only: A8b/A8c exist for B4 only
 out["security_mean_denial"] = means
 md.append("\nMean over scenarios: " + "; ".join(f"{NAMES[a]} {v:.1%}" for a, v in sorted(means.items())))
 tests = {}
-for other in ("b2", "b3"):
+for other in ("b2", "b3", "b4"):
     if other not in set(sec_t.arch):
         continue
     for sc in scs:
@@ -181,6 +183,32 @@ if (D / "scale_raw.csv").exists():
         srows.append(dict(gateways=int(G), concurrency=int(c), req_s=round(tm_, 1), ci=round(th_, 1), mean_ms=round(lm_, 0), p95_ms=round(g.rtt_ms.quantile(.95), 0), grant=round(g.granted.mean(), 3)))
         md.append(f"| {G} | {c} | {tm_:.1f} | {th_:.1f} | {lm_:.0f} | {g.rtt_ms.quantile(.95):.0f} | {g.granted.mean():.3f} |")
     out["scale"] = srows
+
+# ---------------------------------------------------------------- direct chain probe (no gateway)
+if (D / "probe_raw.csv").exists():
+    pr = pd.read_csv(D / "probe_raw.csv"); pr["committed_per_s"] = (pr.committed_in_window / pr.send_span_s).round(1)
+    pr["fraction_committed"] = (pr.committed_total / pr.sent).round(3)
+    out["probe"] = pr.to_dict("records")
+    md.append("\n## Direct chain probe (pre-signed transactions at a fixed offered rate; no gateway)\n\n| Offered (tx/s) | Sent | Committed in window | Committed/s | Committed total | Max block tx | Mean block tx | Latency p50 (s) | p95 | Not included |\n|---|---|---|---|---|---|---|---|---|---|")
+    for r in pr.itertuples():
+        md.append(f"| {r.rate} | {r.sent} | {r.committed_in_window} | {r.committed_per_s} | {r.committed_total} | {r.max_block_tx} | {r.mean_block_tx} | {r.lat_p50_s} | {r.lat_p95_s} | {r.not_included} |")
+
+# ---------------------------------------------------------------- gateway stage timing in the scale-out runs
+if (D / "scale_raw.csv").exists():
+    sc2 = pd.read_csv(D / "scale_raw.csv")
+    if "wait_ms" in sc2 and sc2.wait_ms.notna().any():
+        g2 = sc2.dropna(subset=["wait_ms"]).groupby(["gateways", "concurrency"])[["build_ms", "send_ms", "wait_ms", "rtt_ms"]].mean().round(0)
+        out["scale_stage_ms"] = g2.reset_index().to_dict("records")
+        md.append("\n## Gateway stage timing, BC-ZT scale-out (mean ms: build+sign, send, wait for block, total round trip)\n\n| Gateways | Clients | Build+sign | Send | Wait for block | Round trip |\n|---|---|---|---|---|---|")
+        for (G, c), r in g2.iterrows():
+            md.append(f"| {G} | {c} | {r.build_ms:.0f} | {r.send_ms:.0f} | {r.wait_ms:.0f} | {r.rtt_ms:.0f} |")
+
+# ---------------------------------------------------------------- inter-region round trips (if collected)
+if (D / "pings.csv").exists():
+    pg = pd.read_csv(D / "pings.csv"); out["pings"] = pg.to_dict("records")
+    md.append("\n## Inter-region round-trip times (ping, ms)\n\n| From | To | Avg RTT (ms) |\n|---|---|---|")
+    for r in pg.itertuples():
+        md.append(f"| {r.src} | {r.dst} | {r.avg_ms} |")
 
 # ---------------------------------------------------------------- resource usage per phase (if samplers ran)
 samples = {}

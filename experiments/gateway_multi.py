@@ -18,10 +18,11 @@ from pathlib import Path
 import anyio
 from eth_account import Account
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 from web3 import Web3
 
 from experiments.common import device_address, recover_signer
+from experiments import central_store as CS
+from experiments.central_store import CentralStore, Req, Admin, DECAY_UNIT, apply_admin
 
 D = json.load(open(Path(__file__).with_name("deployment_v2.json")))
 RPCS = os.environ.get("BESU_RPCS", ",".join(f"http://127.0.0.1:{8545 + i}" for i in range(4))).split(",")
@@ -39,20 +40,6 @@ ERRORS = collections.Counter()
 @app.on_event("startup")
 async def _pool():
     anyio.to_thread.current_default_thread_limiter().total_tokens = 400
-
-
-class Req(BaseModel):
-    device_id: str
-    resource: str
-    action: str
-    nonce: int = 0
-    sig: str = "0x"
-
-
-class Admin(BaseModel):
-    ids: list[str] = []
-    device_id: str = ""
-    delta: int = 0
 
 
 # ------------------------------------------------------------------ B0
@@ -77,97 +64,20 @@ def decide_b1(r: Req):
 # B2: plain SQLite state.  B3: hardened centralized service, same logic plus (i) an HMAC over every identity and trust row
 # under a key that lives only in this process, so a party that writes to the database file without the key is detected
 # (fail closed, reason "state-integrity"), and (ii) a hash-chained, append-only audit log of every decision.
-import hashlib, hmac as _hmac
-
-DECAY_UNIT = [86400.0]   # seconds per decay step; shortened only by the trust-decay validation test
-
-
-class CentralStore:
-    def __init__(self, hardened: bool):
-        self.h = hardened
-        self.key = os.urandom(32)
-        self.db = sqlite3.connect(":memory:", check_same_thread=False, isolation_level=None)
-        self.lock = threading.Lock()
-        self.last = "0" * 64
-        self.db.executescript("""CREATE TABLE identity(addr TEXT PRIMARY KEY, active INT, mac TEXT);
-CREATE TABLE trust(addr TEXT PRIMARY KEY, score INT, updated REAL, mac TEXT);
-CREATE TABLE nonce(k TEXT PRIMARY KEY);
-CREATE TABLE win(addr TEXT PRIMARY KEY, start REAL, cnt INT);
-CREATE TABLE audit(seq INTEGER PRIMARY KEY AUTOINCREMENT, h TEXT);""")
-
-    def mac(self, *f):
-        return _hmac.new(self.key, "|".join(map(str, f)).encode(), hashlib.sha256).hexdigest() if self.h else ""
-
-    def put_identity(self, addr, active):
-        self.db.execute("INSERT OR REPLACE INTO identity VALUES(?,?,?)", (addr, active, self.mac("id", addr, active)))
-
-    def put_trust(self, addr, score, updated, forge=None):
-        self.db.execute("INSERT OR REPLACE INTO trust VALUES(?,?,?,?)", (addr, score, updated, forge if forge is not None else self.mac("tr", addr, score, updated)))
-
-    def score(self, addr, now):
-        row = self.db.execute("SELECT score, updated, mac FROM trust WHERE addr=?", (addr,)).fetchone()
-        if not row:
-            return 50
-        if self.h and not _hmac.compare_digest(row[2], self.mac("tr", addr, row[0], row[1])):
-            return None   # integrity failure
-        return max(0, row[0] - 2 * int((now - row[1]) // DECAY_UNIT[0]))
-
-    def audit(self, dev, r, granted, reason):
-        if self.h:
-            self.last = hashlib.sha256((self.last + f"{dev}|{r.resource}|{r.action}|{granted}|{reason}").encode()).hexdigest()
-            self.db.execute("INSERT INTO audit(h) VALUES(?)", (self.last,))
-
-    def decide(self, r: Req):
-        with self.lock:   # decision and audit append are one atomic step (the audit chain must be ordered)
-            g, reason = self._decide(r)
-            self.audit(r.device_id, r, g, reason)
-        return g, reason, {}
-
-    def _decide(self, r: Req):
-        now = time.time()
-        dev = device_address(r.device_id)
-        pol = POLICIES.get((r.resource, r.action))
-        if True:
-            if not pol:
-                return False, "no-policy"
-            row = self.db.execute("SELECT active, mac FROM identity WHERE addr=?", (dev,)).fetchone()
-            if self.h and row and not _hmac.compare_digest(row[1], self.mac("id", dev, row[0])):
-                return False, "state-integrity"
-            if not row or not row[0]:
-                return False, "identity-invalid"
-            if recover_signer(AC_ADDR, CHAIN_ID, dev, r.resource, r.action, r.nonce, r.sig) != dev:
-                return False, "bad-signature"
-            k = f"{dev}:{r.nonce}"
-            if self.db.execute("SELECT 1 FROM nonce WHERE k=?", (k,)).fetchone():
-                return False, "replay"
-            self.db.execute("INSERT INTO nonce VALUES(?)", (k,))
-            w = self.db.execute("SELECT start, cnt FROM win WHERE addr=?", (dev,)).fetchone()
-            start, cnt = (w if w else (0.0, 0))
-            if now >= start + WINS:
-                start, cnt = now, 0
-            cnt += 1
-            self.db.execute("INSERT OR REPLACE INTO win VALUES(?,?,?)", (dev, start, cnt))
-            if cnt > MAXW:
-                return False, "rate-limited"
-            th, f, t = pol
-            s = self.score(dev, now)
-            if s is None:
-                return False, "state-integrity"
-            if s < th:
-                return False, "insufficient-trust"
-            hour = int(now // 3600) % 24
-            if f != t:
-                ok = (f <= hour < t) if f < t else (hour >= f or hour < t)
-                if not ok:
-                    return False, "outside-time-window"
-        return True, "granted"
-
-
+CS.CHAIN_ID[0] = CHAIN_ID
 STORES = {"b2": CentralStore(False), "b3": CentralStore(True)}
 
 
 def decide_b2(r: Req): return STORES["b2"].decide(r)
 def decide_b3(r: Req): return STORES["b3"].decide(r)
+
+
+# ------------------------------------------------------------------ B4 replicated centralized ZT (see below for the route)
+import requests as _rq
+B4_URLS = [u for u in os.environ.get("B4_REPLICAS", "").split(",") if u]
+B4_SEED = os.environ.get("B4_SEED", "replica-dev")
+B4_ADDRS = [Account.from_key(Web3.keccak(text=f"replica:{B4_SEED}:{i}")).address for i in range(len(B4_URLS))]
+B4_QUORUM = 2 * ((len(B4_URLS) - 1) // 3) + 1 if B4_URLS else 0   # 3 of 4: tolerates one Byzantine replica
 
 
 @app.post("/{arch}/admin/{op}")
@@ -180,30 +90,16 @@ def admin(arch: str, op: str, a: Admin):
         # evidence / tamper: static RBAC has no trust state, nothing to change
         return {"ok": True}
     if arch in STORES:
-        S_ = STORES[arch]
-        with S_.lock:
-            if op == "decay_unit":
-                DECAY_UNIT[0] = float(a.delta) if a.delta > 0 else 86400.0
-            elif op == "reset":   # clear rate-limit windows and nonces between load levels
-                S_.db.execute("DELETE FROM win"); S_.db.execute("DELETE FROM nonce")
-            elif op == "seed":
-                for i in a.ids:
-                    S_.put_identity(device_address(i), 1)
-            elif op == "revoke":
-                S_.put_identity(device_address(a.device_id), 0)
-            elif op == "evidence":
-                dev = device_address(a.device_id); now = time.time()
-                s = S_.score(dev, now)
-                s = max(0, min(100, (50 if s is None else s) + a.delta))
-                S_.put_trust(dev, s, now)
-            elif op == "score":
-                return {"ok": True, "score": S_.score(device_address(a.device_id), time.time())}
-            elif op == "tamper":       # writes the database file directly: no key, so no valid MAC
-                S_.put_trust(device_address(a.device_id), 100, time.time(), forge="00" * 32)
-            elif op == "tamper_host":  # the decision host is compromised: the attacker holds the key too
-                S_.put_trust(device_address(a.device_id), 100, time.time())
-        return {"ok": True}
+        return apply_admin(STORES[arch], op, a)
+    if arch == "b4" and B4_URLS:
+        idx = a.replicas or list(range(len(B4_URLS)))
+        outs = list(_pool_b4.map(lambda i: _rq.post(f"{B4_URLS[i]}/admin/{op}", json=a.model_dump(), timeout=60).json(), idx))
+        return outs[0]
     raise HTTPException(404, "no admin API for this architecture")
+
+
+from concurrent.futures import ThreadPoolExecutor as _TPE
+_pool_b4 = _TPE(8)
 
 
 # ------------------------------------------------------------------ BCZ proposed (Besu QBFT)
@@ -261,6 +157,7 @@ threading.Thread(target=_watcher, daemon=True).start()
 
 
 def decide_bcz(r: Req):
+    t_in = time.time()
     dev = device_address(r.device_id)
     s = POOL[next(_rr) % len(POOL)]
     sig = bytes.fromhex(r.sig[2:])
@@ -275,7 +172,9 @@ def decide_bcz(r: Req):
                 waiter = [threading.Event(), None]
                 with _wl:
                     WAIT[bytes(h)] = waiter
+                t_built = time.time()
                 s["w3"].eth.send_raw_transaction(raw)
+                t_sent = time.time()
                 s["nonce"] += 1
                 break
             except Exception as e:  # noqa: BLE001
@@ -291,13 +190,82 @@ def decide_bcz(r: Req):
         raise TimeoutError("receipt timeout")
     with _wl:
         rc = WAIT.pop(bytes(h))[1]
+    t_done = time.time()
+    st = {"build_ms": round((t_built - t_in) * 1000, 1), "send_ms": round((t_sent - t_built) * 1000, 1), "wait_ms": round((t_done - t_sent) * 1000, 1)}
     ev = s["ac"].events.AccessDecision().process_receipt(rc)
     if not ev:
-        return False, "no-event", {"gas_used": rc["gasUsed"]}
-    return bool(ev[0]["args"]["granted"]), ev[0]["args"]["reason"], {"gas_used": rc["gasUsed"], "block": rc["blockNumber"]}
+        return False, "no-event", {"gas_used": rc["gasUsed"], **st}
+    return bool(ev[0]["args"]["granted"]), ev[0]["args"]["reason"], {"gas_used": rc["gasUsed"], "block": rc["blockNumber"], **st}
 
 
 ARCH = {"b0": decide_b0, "b1": decide_b1, "b2": decide_b2, "b3": decide_b3, "bcz": decide_bcz}
+
+
+# ------------------------------------------------------------------ B4 route (async: fan-out to the replicas, signed quorum)
+import asyncio
+import httpx
+from eth_account.messages import encode_defunct
+
+_B4C = None
+_B4LOCKS: dict = {}
+
+
+def _verdict_digest(dev, r, granted, reason):
+    return Web3.keccak(text=f"{dev}|{r.resource}|{r.action}|{r.nonce}|{granted}|{reason}")
+
+
+async def _ask(i, r):
+    global _B4C
+    try:
+        j = (await _B4C.post(f"{B4_URLS[i]}/decide", json=r.model_dump())).json()
+        who = Account.recover_message(encode_defunct(primitive=_verdict_digest(device_address(r.device_id), r, bool(j["granted"]), j["reason"])), signature=j["sig"])
+        if who != B4_ADDRS[i]:
+            return None            # unsigned or wrongly signed verdict counts as no vote
+        return bool(j["granted"]), j["reason"]
+    except Exception:  # noqa: BLE001
+        return None
+
+
+@app.post("/b4/access-request")
+async def access_request_b4(r: Req):
+    """Replicated centralized ZT.  The request goes to every replica; the PEP grants only if at least B4_QUORUM replicas
+    return a correctly signed 'granted'.  Requests of one device are ordered (a per-device lock held until every replica
+    has answered) so all replicas apply the same sequence of nonces and rate-limit counts."""
+    global _B4C
+    t0 = time.time()
+    if _B4C is None:
+        _B4C = httpx.AsyncClient(timeout=20, limits=httpx.Limits(max_connections=4000, max_keepalive_connections=400))
+    lock = _B4LOCKS.setdefault(r.device_id, asyncio.Lock())
+    await lock.acquire()
+    n = len(B4_URLS)
+    tasks = [asyncio.create_task(_ask(i, r)) for i in range(n)]
+    pending = set(tasks); grants = denies = 0; reasons: collections.Counter = collections.Counter(); verdict = None
+    try:
+        while pending and verdict is None:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for d in done:
+                v = d.result()
+                if v is None:
+                    denies += 1; reasons["no-vote"] += 1
+                elif v[0]:
+                    grants += 1
+                else:
+                    denies += 1; reasons[v[1]] += 1
+            if grants >= B4_QUORUM:
+                verdict = (True, "granted")
+            elif denies > n - B4_QUORUM:
+                verdict = (False, reasons.most_common(1)[0][0] if reasons else "no-quorum")
+    except Exception:
+        lock.release(); raise
+
+    async def _rel():
+        try:
+            await asyncio.gather(*pending, return_exceptions=True)
+        finally:
+            lock.release()
+    asyncio.create_task(_rel())
+    g, reason = verdict if verdict else (False, "no-quorum")
+    return {"granted": g, "reason": reason, "latency_ms": (time.time() - t0) * 1000, "votes": f"{grants}g/{denies}d"}
 
 
 @app.post("/{arch}/access-request")

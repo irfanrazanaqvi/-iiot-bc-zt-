@@ -23,6 +23,11 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--gateway", default="http://127.0.0.1:9000")
 ap.add_argument("--out", default="results_run")
 ap.add_argument("--archs", nargs="+", default=["b0", "b1", "b2", "b3", "bcz"])
+ap.add_argument("--phases", default="perf,open,sec,rev,scale,decay", help="comma separated subset of perf,open,sec,rev,scale,decay,probe")
+ap.add_argument("--scale-levels", default="1:200,2:200,4:200,1:400,2:400,4:400", help="gateways:clients pairs for the scale-out test")
+ap.add_argument("--probe-rpcs", default="", help="comma separated validator RPC URLs for the direct chain probe (default: BESU_RPCS)")
+ap.add_argument("--probe-rates", default="20,40,60,80,120,160", help="offered rates (tx/s) of the direct chain probe")
+ap.add_argument("--probe-seconds", type=int, default=30)
 ap.add_argument("--gateways", default="", help="comma separated gateway URLs for the scale-out test (first one is --gateway); empty = skip")
 ap.add_argument("--scale-repeats", type=int, default=3)
 ap.add_argument("--no-decay", action="store_true")
@@ -98,7 +103,7 @@ def req(arch, dev, res_act=PLC, nonce=None, sig=None, base=None):
 
 
 def adm(arch, op, **kw):
-    if arch in ("b1", "b2", "b3"):
+    if arch in ("b1", "b2", "b3", "b4"):
         return S.post(f"{A.gateway}/{arch}/admin/{op}", json=kw, timeout=30).json()
 
 
@@ -130,12 +135,14 @@ OPEN = Rows("openloop_raw.csv", ["arch", "repeat", "idx", "rtt_ms", "gw_ms", "gr
 SEC = Rows("security_raw.csv", ["arch", "repeat", "scenario", "role", "idx", "granted", "reason", "rtt_ms", "extra"])
 REV = Rows("revocation_raw.csv", ["arch", "trial", "revocation_s", "timed_out"])
 DECAY = Rows("decay_raw.csv", ["arch", "dev", "kind", "t_rel", "score", "pred", "granted", "expect_grant", "reason"])
-SCALE = Rows("scale_raw.csv", ["gateways", "concurrency", "repeat", "idx", "rtt_ms", "granted", "reason", "gas_used", "t_end"])
+SCALE = Rows("scale_raw.csv", ["gateways", "concurrency", "repeat", "idx", "rtt_ms", "granted", "reason", "gas_used", "t_end", "build_ms", "send_ms", "wait_ms"])
+PROBE = Rows("probe_raw.csv", ["rate", "sent", "send_span_s", "committed_in_window", "committed_total", "max_block_tx", "mean_block_tx", "lat_p50_s", "lat_p95_s", "not_included"])
 
 
 def seed():
     ids = all_ids()
-    for a in ("b1", "b2", "b3"):
+    for a in ("b1", "b2", "b3", "b4"):
+        if a == "b4" and "b4" not in A.archs: continue
         adm(a, "seed", ids=ids)
 
 
@@ -218,20 +225,27 @@ def phase_security(arch, rep):
         adm(arch, "tamper", device_id=dev); ok = "tamper_applied"
     log(arch, rep, "A7", "attack", burst(arch, dev, PLC, N), extra=ok)
     # A8 decision-host compromise: the attacker controls the machine that runs the decision service and so holds
-    #    everything on it (database, integrity key, gateway signing keys), and tries to raise a low-trust device's score
-    dev = f"sec-host-{k}"; evidence(arch, dev, -30)
-    ok = ""
-    if arch == "bcz":
-        seed = os.environ.get("GATEWAY_SEED")
-        atk = Account.from_key(Web3.keccak(text=f"{seed}:0")) if seed else Account.create()   # a real gateway signing key
-        try:
-            rc = chain_wait(chain_tx(tm.functions.reportEvidence(device_address(dev), 70, "forged"), acct=atk))
-            ok = f"tamper_tx_status={rc['status']};gateway_key={bool(seed)}"
-        except Exception as e:  # noqa: BLE001
-            ok = "tamper_rejected:" + str(e)[:60]
-    else:
-        adm(arch, "tamper_host", device_id=dev); ok = "tamper_applied"
-    log(arch, rep, "A8", "attack", burst(arch, dev, PLC, N), extra=ok)
+    #    everything on it (database, integrity key, gateway signing keys), and tries to raise a low-trust device's score.
+    #    B4 has four replica hosts: A8 compromises one replica (f = 1), A8b two, A8c three (beyond the fault threshold).
+    variants = [("A8", [0], 0)] + ([("A8b", [0, 1], 10), ("A8c", [0, 1, 2], 20)] if arch == "b4" else [])
+    for scen, hosts, off in variants:
+        dev = f"sec-host-{off + k}"; evidence(arch, dev, -30)
+        ok = ""
+        if arch == "bcz":
+            seed = os.environ.get("GATEWAY_SEED")
+            atk = Account.from_key(Web3.keccak(text=f"{seed}:0")) if seed else Account.create()   # a real gateway signing key
+            try:
+                rc = chain_wait(chain_tx(tm.functions.reportEvidence(device_address(dev), 70, "forged"), acct=atk))
+                ok = f"tamper_tx_status={rc['status']};gateway_key={bool(seed)}"
+            except Exception as e:  # noqa: BLE001
+                ok = "tamper_rejected:" + str(e)[:60]
+        elif arch == "b4":
+            adm(arch, "tamper_host", device_id=dev, replicas=hosts); adm(arch, "byzantine", delta=1, replicas=hosts)
+            ok = f"compromised_replicas={len(hosts)}"
+        else:
+            adm(arch, "tamper_host", device_id=dev); ok = "tamper_applied"
+        log(arch, rep, scen, "attack", burst(arch, dev, PLC, N), extra=ok)
+        if arch == "b4": adm(arch, "byzantine", delta=0, replicas=hosts)
     # control: a legitimate device issuing a normal number of requests must be granted
     dev = f"sec-ctrl-{k}"
     log(arch, rep, "CTRL", "legit", burst(arch, dev, PLC, N))
@@ -308,7 +322,7 @@ def phase_decay(arch):
 def phase_scale():
     """Closed-loop load against BC-ZT through 1, 2 and 4 gateway processes (each with its own signing accounts)."""
     gws = [g for g in A.gateways.split(",") if g]
-    levels = [(1, 200), (2, 200), (4, 200), (1, 400), (2, 400), (4, 400)] if not A.quick else [(1, 40), (2, 40)]
+    levels = [tuple(int(x) for x in p.split(":")) for p in A.scale_levels.split(",")] if not A.quick else [(1, 40), (2, 40)]
     for G, c in levels:
         if G > len(gws): continue
         for rep in range(A.scale_repeats if not A.quick else 1):
@@ -319,8 +333,62 @@ def phase_scale():
             PH.add(phase="scale", arch="bcz", repeat=rep, detail=f"G={G},c={c}", t_start=t0, t_end=time.time())
             for i, r in enumerate(res):
                 SCALE.add(gateways=G, concurrency=c, repeat=rep, idx=i, rtt_ms=round(r["rtt_ms"], 2), granted=int(r["granted"]), reason=r["reason"],
-                          gas_used=r.get("gas_used", ""), t_end=r["t_end"])
+                          gas_used=r.get("gas_used", ""), t_end=r["t_end"], build_ms=r.get("build_ms", ""), send_ms=r.get("send_ms", ""), wait_ms=r.get("wait_ms", ""))
             print("scale G", G, "c", c, "rep", rep, "req/s", round(n / (time.time() - t0), 1), flush=True)
+
+
+def phase_probe():
+    """Direct chain probe: pre-signed access-decision transactions are sent to the validators at a fixed offered rate
+    (open loop, no gateway, no HTTP).  This separates what the chain can commit from what the gateway path adds."""
+    import statistics
+    from experiments.common import SCALE_IDS
+    urls = [u for u in (A.probe_rpcs or ",".join(RPCS)).split(",") if u]
+    W = [Web3(Web3.HTTPProvider(u, request_kwargs={"timeout": 60})) for u in urls]
+    ac = [w.eth.contract(address=AC, abi=D["abis"]["accessControl"]) for w in W]
+    accts = [Account.from_key(Web3.keccak(text=f"probe:{i}")) for i in range(128)]
+    nonces = [w3.eth.get_transaction_count(a.address, "pending") for a in accts]
+    ptr = [0]
+    for rate in [int(x) for x in A.probe_rates.split(",")]:
+        n = rate * A.probe_seconds
+        txs = []
+        for j in range(n):          # pre-sign, so the sender is not the bottleneck
+            i = j % len(accts); dev = f"scl-{(ptr[0] + j) % SCALE_IDS}"
+            nonce, sig = sign_request(dev, AC, CHAIN, *PLC)
+            fn = ac[i % len(ac)].functions.checkAccess(device_address(dev), PLC[0], PLC[1], nonce, bytes.fromhex(sig[2:]))
+            tx = fn.build_transaction({"from": accts[i].address, "nonce": nonces[i], "gas": 600000, "gasPrice": 0, "chainId": CHAIN})
+            nonces[i] += 1
+            txs.append((i % len(ac), accts[i].sign_transaction(tx).raw_transaction))
+        ptr[0] += n
+        sent_at = {}; b0 = w3.eth.block_number
+        def send(j):
+            k, raw = txs[j]
+            target = t_start + j / rate
+            d = target - time.time()
+            if d > 0: time.sleep(d)
+            try:
+                h = W[k].eth.send_raw_transaction(raw); sent_at[bytes(h)] = time.time()
+            except Exception:  # noqa: BLE001
+                pass
+        t_start = time.time() + 1.0
+        with ThreadPoolExecutor(64) as ex:
+            list(ex.map(send, range(n)))
+        t_end = time.time()
+        time.sleep(20)              # let queued transactions drain
+        top = w3.eth.block_number; lat = []; per_block = []; inc = 0; inc_win = 0
+        for bn in range(b0 + 1, top + 1):
+            blk = w3.provider.make_request("eth_getBlockByNumber", [hex(bn), False])["result"]
+            ts = int(blk["timestamp"], 16); hs = [bytes.fromhex(h[2:]) for h in blk["transactions"]]
+            mine = [h for h in hs if h in sent_at]
+            if mine: per_block.append(len(mine))
+            for h in mine:
+                inc += 1; lat.append(ts - sent_at[h])
+                if ts <= t_end + 1: inc_win += 1
+        row = dict(rate=rate, sent=len(sent_at), send_span_s=round(t_end - t_start, 1), committed_in_window=inc_win, committed_total=inc,
+                   max_block_tx=max(per_block) if per_block else 0, mean_block_tx=round(statistics.mean(per_block), 1) if per_block else 0,
+                   lat_p50_s=round(statistics.median(lat), 2) if lat else "", lat_p95_s=round(sorted(lat)[int(.95 * len(lat))], 2) if lat else "",
+                   not_included=len(sent_at) - inc)
+        PROBE.add(**row); PH.add(phase="probe", arch="bcz", repeat=0, detail=f"rate={rate}", t_start=t_start, t_end=t_end)
+        print("probe", row, flush=True)
 
 
 def guarded(fn, *a):
@@ -338,15 +406,20 @@ if __name__ == "__main__":
     seed()
     meta = {"started": time.time(), "args": vars(A), "deployment": {k: D[k] for k in ("accessControl", "maxPerWindow", "windowSeconds", "closedWindow")},
             "client_version": w3.client_version, "block_start": w3.eth.block_number}
+    PHS = set(A.phases.split(","))
     for arch in A.archs:
-        for rep in range(A.perf_repeats): guarded(phase_perf, arch, rep)
-        for rep in range(A.open_repeats): guarded(phase_open, arch, rep)
-        for rep in range(A.sec_repeats): guarded(phase_security, arch, rep)
-        guarded(phase_rev, arch)
-    if A.gateways and "bcz" in A.archs: guarded(phase_scale)
-    if not A.no_decay:
+        if "perf" in PHS:
+            for rep in range(A.perf_repeats): guarded(phase_perf, arch, rep)
+        if "open" in PHS:
+            for rep in range(A.open_repeats): guarded(phase_open, arch, rep)
+        if "sec" in PHS:
+            for rep in range(A.sec_repeats): guarded(phase_security, arch, rep)
+        if "rev" in PHS: guarded(phase_rev, arch)
+    if "scale" in PHS and A.gateways and "bcz" in A.archs: guarded(phase_scale)
+    if "decay" in PHS and not A.no_decay:
         for arch in A.archs:
             if arch in ("b2", "b3", "bcz"): guarded(phase_decay, arch)
+    if "probe" in PHS: guarded(phase_probe)
     n = w3.eth.block_number
     blocks = [w3.provider.make_request("eth_getBlockByNumber", [hex(i), False])["result"] for i in range(max(1, meta["block_start"]), n)]
     meta["blocks"] = [{"n": int(b["number"], 16), "size": int(b["size"], 16), "tx": len(b["transactions"]), "gas_used": int(b["gasUsed"], 16),

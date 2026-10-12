@@ -10,16 +10,23 @@
 # them), runs experiments/run_all.py for 5 architectures (no control, static RBAC, centralized ZT, hardened centralized ZT, proposed), runs experiments/analyze.py, copies the
 # results to ~/results_gcp, and DELETES every VM at exit (set KEEP=1 to keep them).
 set -uo pipefail
-MODE=${MODE:-full}
+MODE=${MODE:-full}   # full | quick | supp   (supp = supplementary run: replicated baseline B4 + throughput-plateau isolation)
 REPO_URL=${REPO_URL:-https://github.com/irfanrazanaqvi/-iiot-bc-zt-.git}
 PFX=${PFX:-iiotbc}
 VT=${VT:-e2-standard-2}      # validator machine type
 CT=${CT:-e2-standard-4}      # client machine type (4 vCPU: runs up to 4 gateway processes plus the load generator)
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ARCHS=${ARCHS:-"b0 b1 b2 b3 bcz"}; PHASES=${PHASES:-perf,open,sec,rev,scale,decay}
+SCALE_LEVELS=${SCALE_LEVELS:-1:200,2:200,4:200,1:400,2:400,4:400}; PERF_REPEATS=${PERF_REPEATS:-5}
+if [ "$MODE" = "supp" ]; then
+  ARCHS=${ARCHS_SUPP:-"b2 b3 b4 bcz"}; PHASES=${PHASES_SUPP:-perf,open,sec,rev,scale,probe}; SCALE_LEVELS=${SCALE_LEVELS_SUPP:-1:400,2:400,4:400}; PERF_REPEATS=3
+  CT=${CT_SUPP:-e2-standard-8}      # larger client machine to test whether the client side limits throughput
+  OUTDIR=${OUTDIR:-$HOME/results_gcp_supp}
+fi
 OUTDIR=${OUTDIR:-$HOME/results_gcp}
 declare -A Z=( [v1]=us-central1-a [v2]=europe-west1-b [v3]=asia-south1-a [v4]=asia-southeast1-a [c]=europe-west1-b )
 KEYS=(v1 v2 v3 v4 c)
-ARGS=""; [ "$MODE" = "quick" ] && ARGS="--quick"
+ARGS=""; { [ "$MODE" = "quick" ] || [ "${QUICK:-0}" = "1" ]; } && ARGS="--quick"
 
 say() { printf '\n=== %s\n' "$*"; }
 vm() { echo "$PFX-$1"; }
@@ -73,6 +80,19 @@ for k in "${KEYS[@]}"; do
 done
 echo "signature backend on client: $(ssh_ c "/opt/venv/bin/python -c \"import eth_keys.backends as b;print(type(b.get_backend()).__name__)\"")"
 declare -A IP; for k in "${KEYS[@]}"; do IP[$k]=$(ip_ "$k"); echo "$k ${IP[$k]}"; done
+
+say "Measuring round-trip times between the five machines (ping)"
+rm -f /tmp/ping_*.txt
+for a in "${KEYS[@]}"; do
+  ( for b in "${KEYS[@]}"; do
+      [ "$a" = "$b" ] && continue
+      v=$(ssh_ "$a" "ping -c 10 -i 0.3 -q ${IP[$b]} | tail -1 | cut -d/ -f5") || v=""
+      echo "$a,$b,${v:-}"
+    done > /tmp/ping_$a.txt ) &
+done
+wait
+echo "src,dst,avg_ms" > /tmp/pings.csv; cat /tmp/ping_*.txt >> /tmp/pings.csv
+cat /tmp/pings.csv
 
 say "Generating validator keys and genesis (on the client VM)"
 ssh_ c 'cd /tmp && rm -rf net qbft.json && cp /opt/repo/network/qbft-config.json qbft.json && /opt/besu-24.7.0/bin/besu operator generate-blockchain-config --config-file=qbft.json --to=net --private-key-file-name=key >/dev/null 2>&1 && tar czf net.tgz net'
@@ -131,8 +151,27 @@ for t in $(seq 60); do
 done
 ssh_ c 'test -s /opt/repo/experiments/deployment_v2.json' || { echo "contract deployment did not finish. Its log:"; ssh_ c 'tail -15 /tmp/deploy.log'; exit 1; }
 ssh_ c "openssl rand -hex 8 > /tmp/gwseed"
+B4URLS=""
+if [[ " $ARCHS " == *" b4 "* ]]; then
+  say "Starting the four B4 replicas (one on each validator machine)"
+  gcloud compute scp --zone "${Z[c]}" --quiet "$(vm c):/opt/repo/experiments/deployment_v2.json" /tmp/deployment_v2.json 2>/dev/null
+  CID=$(ssh_ c "curl -s -m 5 -X POST -H 'Content-Type: application/json' --data '{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}' http://${IP[v1]}:8545 | python3 -c 'import sys,json;print(int(json.load(sys.stdin)[\"result\"],16))'")
+  echo "chain id: $CID"
+  ssh_ c "openssl rand -hex 8 > /tmp/b4seed"
+  B4SEED=$(ssh_ c "cat /tmp/b4seed")
+  i=0
+  for k in v1 v2 v3 v4; do
+    gcloud compute scp --zone "${Z[$k]}" --quiet /tmp/deployment_v2.json "$(vm $k):/tmp/deployment_v2.json" 2>/dev/null
+    ssh_ "$k" "sudo cp /tmp/deployment_v2.json /opt/repo/experiments/deployment_v2.json && sudo chmod -R a+rwX /opt/repo && cd /opt/repo && (ulimit -n 65535 2>/dev/null; CHAIN_ID=$CID REPLICA_INDEX=$i B4_SEED=$B4SEED nohup /opt/venv/bin/python -m uvicorn experiments.replica:app --host 0.0.0.0 --port 9100 --backlog 2048 > /tmp/replica.log 2>&1 < /dev/null &) ; sleep 1; echo started"
+    B4URLS="$B4URLS${B4URLS:+,}http://${IP[$k]}:9100"; i=$((i+1))
+  done
+  for k in v1 v2 v3 v4; do
+    for t in $(seq 20); do ssh_ c "curl -s -m 5 http://${IP[$k]}:9100/health" | grep -q replica && break; sleep 3; done
+    echo "replica on $k: $(ssh_ c "curl -s -m 5 http://${IP[$k]}:9100/health")"
+  done
+fi
 for i in 0 1 2 3; do
-  ssh_ c "cd /opt/repo && ulimit -n 65535 2>/dev/null; SD=\$(cat /tmp/gwseed); [ $i -gt 0 ] && SD=\$SD-g$i; GATEWAY_SEED=\$SD BESU_RPCS=$RPCS WATCH_RPC=http://${IP[v2]}:8545 nohup /opt/venv/bin/python -m uvicorn experiments.gateway_multi:app --port \$((9000+$i)) --timeout-keep-alive 300 --backlog 4096 > /tmp/gw$i.log 2>&1 < /dev/null &"
+  ssh_ c "cd /opt/repo && ulimit -n 65535 2>/dev/null; SD=\$(cat /tmp/gwseed); [ $i -gt 0 ] && SD=\$SD-g$i; B4_SEED=${B4SEED:-x} B4_REPLICAS=$B4URLS GATEWAY_SEED=\$SD BESU_RPCS=$RPCS WATCH_RPC=http://${IP[v2]}:8545 nohup /opt/venv/bin/python -m uvicorn experiments.gateway_multi:app --port \$((9000+$i)) --timeout-keep-alive 300 --backlog 4096 > /tmp/gw$i.log 2>&1 < /dev/null &"
 done
 GW=""
 for t in $(seq 40); do
@@ -141,7 +180,7 @@ for t in $(seq 40); do
 done
 [ -n "$GW" ] || { echo "gateways did not start. Log:"; ssh_ c 'tail -30 /tmp/gw0.log'; exit 1; }
 echo "gateway: $GW"
-ssh_ c "cd /opt/repo && mkdir -p /tmp/results && (ulimit -n 65535 2>/dev/null; ADMIN_PRIVATE_KEY=\$(cat /tmp/deployer.key) GATEWAY_SEED=\$(cat /tmp/gwseed) BESU_RPCS=http://${IP[v1]}:8545 nohup sh -c '/opt/venv/bin/python -m experiments.run_all --out /tmp/results --gateways http://127.0.0.1:9000,http://127.0.0.1:9001,http://127.0.0.1:9002,http://127.0.0.1:9003 $ARGS > /tmp/run.log 2>&1; touch /tmp/results/DONE' > /dev/null 2>&1 < /dev/null &)"
+ssh_ c "cd /opt/repo && mkdir -p /tmp/results && (ulimit -n 65535 2>/dev/null; ADMIN_PRIVATE_KEY=\$(cat /tmp/deployer.key) GATEWAY_SEED=\$(cat /tmp/gwseed) BESU_RPCS=http://${IP[v1]}:8545 nohup sh -c '/opt/venv/bin/python -m experiments.run_all --out /tmp/results --archs $ARCHS --phases $PHASES --scale-levels $SCALE_LEVELS --perf-repeats $PERF_REPEATS --gateways http://127.0.0.1:9000,http://127.0.0.1:9001,http://127.0.0.1:9002,http://127.0.0.1:9003 $ARGS > /tmp/run.log 2>&1; cp /tmp/pings.csv /tmp/results/ 2>/dev/null; touch /tmp/results/DONE' > /dev/null 2>&1 < /dev/null &)"
 
 say "Experiment running (progress below; the full run takes roughly 75 minutes)"
 for t in $(seq 400); do
@@ -163,8 +202,8 @@ for k in v1 v2 v3 v4; do gcloud compute scp --zone "${Z[c]}" --quiet "sampler_$k
 ssh_ c 'cp /tmp/sampler_c.csv /tmp/results/sampler_c.csv; cp /opt/repo/experiments/deployment_v2.json /tmp/results/ 2>/dev/null; cd /opt/repo && /opt/venv/bin/python experiments/analyze.py /tmp/results > /tmp/results/analyze_stdout.txt 2>&1; tail -3 /tmp/results/analyze_stdout.txt'
 rm -rf "$OUTDIR"; mkdir -p "$OUTDIR"
 gcloud compute scp --recurse --zone "${Z[c]}" --quiet "$(vm c):/tmp/results/*" "$OUTDIR/" 2>/dev/null
-( cd "$HOME" && tar czf results_gcp.tgz "$(basename "$OUTDIR")" )
+( cd "$HOME" && tar czf "$(basename "$OUTDIR").tgz" "$(basename "$OUTDIR")" )
 [ "$CRASHED" = 1 ] && echo "NOTE: the run crashed; the results folder holds PARTIAL data (run.log inside shows why)."
-say "DONE. Results are in $OUTDIR and $HOME/results_gcp.tgz"
-echo "Download the archive with:   cloudshell download $HOME/results_gcp.tgz"
-echo "Then send me results_gcp.tgz (or paste $OUTDIR/tables.md). The VMs are deleted automatically now."
+say "DONE. Results are in $OUTDIR and $HOME/$(basename "$OUTDIR").tgz"
+echo "Download the archive with:   cloudshell download $HOME/$(basename "$OUTDIR").tgz"
+echo "Then send me that .tgz (or paste $OUTDIR/tables.md). The VMs are deleted automatically now."

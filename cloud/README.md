@@ -63,3 +63,18 @@ The published results (`evaluation/results_gcp/`) come from one clean pass: all 
 * A8 follows from the design (the attacker lacks the monitor-role key on chain); A5 evidence is injected, not telemetry-derived.
 * The cause of the BC-ZT throughput plateau (about 55 req/s with 2-4 gateways) is not isolated.
 * Single deployment on cloud VMs; no replicated or fault-tolerant centralized baseline was evaluated.
+
+## Supplementary run (replicated baseline B4 and throughput-plateau isolation)
+
+```bash
+MODE=supp bash cloud/gcp_run.sh        # about 80 minutes; results in ~/results_gcp_supp and ~/results_gcp_supp.tgz
+```
+
+Runs B2, B3, **B4** (replicated centralized ZT: four replicas, one on each validator VM, each with its own state, integrity key
+and signing key; the PEP grants only on at least three correctly signed `granted` verdicts; `experiments/replica.py`) and BC-ZT.
+Security adds A8b (two replica hosts compromised, fail closed) and A8c (three, beyond the fault threshold) for B4 only.
+Plateau isolation: a larger client VM (`CT_SUPP`, default e2-standard-8; use `CT_SUPP=e2-standard-4` if your quota is lower),
+per-stage gateway timing (`build_ms`, `send_ms`, `wait_ms` in `scale_raw.csv`), a **direct chain probe** that sends pre-signed
+decision transactions at fixed offered rates without the gateway (`probe_raw.csv`), and ping round-trip times between all
+machines (`pings.csv`). `QUICK=1 MODE=supp ...` is a 15-minute smoke test. If Cloud Shell disconnects:
+`OUTDIR=$HOME/results_gcp_supp bash cloud/gcp_collect.sh`.

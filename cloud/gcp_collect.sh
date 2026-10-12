@@ -26,7 +26,7 @@ for t in $(seq 400); do
   if ssh_ c 'test -f /tmp/results/DONE'; then break; fi
   echo "$(date +%H:%M) $(ssh_ c 'tail -1 /tmp/run.log | cut -c1-110')"; sleep 45
 done
-ssh_ c 'cp /tmp/run.log /tmp/gw0.log /tmp/results/ 2>/dev/null'
+ssh_ c 'cp /tmp/run.log /tmp/gw0.log /tmp/pings.csv /tmp/results/ 2>/dev/null'
 ssh_ c 'test -f /tmp/results/meta.json' || { echo "The experiment did not finish cleanly. Last log lines:"; ssh_ c 'tail -25 /tmp/run.log | cut -c1-200'; echo "Partial data will still be collected."; }
 say "Analysing and collecting results"
 WORK=$(mktemp -d); cd "$WORK"
@@ -35,6 +35,6 @@ for k in v1 v2 v3 v4; do gcloud compute scp --zone "${Z[c]}" --quiet "sampler_$k
 ssh_ c 'cp /tmp/sampler_c.csv /tmp/results/sampler_c.csv; cp /opt/repo/experiments/deployment_v2.json /tmp/results/ 2>/dev/null; cd /opt/repo && /opt/venv/bin/python experiments/analyze.py /tmp/results > /tmp/results/analyze_stdout.txt 2>&1; tail -3 /tmp/results/analyze_stdout.txt'
 rm -rf "$OUTDIR"; mkdir -p "$OUTDIR"
 gcloud compute scp --recurse --zone "${Z[c]}" --quiet "$(vm c):/tmp/results/*" "$OUTDIR/" 2>/dev/null
-( cd "$HOME" && tar czf results_gcp.tgz "$(basename "$OUTDIR")" )
-say "DONE. Results are in $OUTDIR and $HOME/results_gcp.tgz"
-echo "Download the archive with:   cloudshell download $HOME/results_gcp.tgz"
+( cd "$HOME" && tar czf "$(basename "$OUTDIR").tgz" "$(basename "$OUTDIR")" )
+say "DONE. Results are in $OUTDIR and $HOME/$(basename "$OUTDIR").tgz"
+echo "Download the archive with:   cloudshell download $HOME/$(basename "$OUTDIR").tgz"

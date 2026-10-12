@@ -12,12 +12,13 @@ mkdir -p /opt && cd /opt
 curl -sL -o besu.tgz https://github.com/hyperledger/besu/releases/download/24.7.0/besu-24.7.0.tar.gz
 tar xzf besu.tgz && rm besu.tgz
 git clone "$REPO" /opt/repo
+apt-get install -y build-essential python3-dev
+python3 -m venv /opt/venv
+/opt/venv/bin/pip install --quiet --upgrade pip
+/opt/venv/bin/pip install --quiet web3 fastapi "uvicorn[standard]" requests httpx pandas numpy scipy psutil
+/opt/venv/bin/pip install --quiet coincurve || echo "WARNING: coincurve not installed (signature checks will be slow)"
 if [ "$ROLE" = "client" ]; then
-  apt-get install -y nodejs npm build-essential python3-dev
+  apt-get install -y nodejs npm
   mkdir -p /opt/nd && cd /opt/nd && npm install --no-audit --no-fund solc@0.8.20 ethers@6
-  python3 -m venv /opt/venv
-  /opt/venv/bin/pip install --quiet --upgrade pip
-  /opt/venv/bin/pip install --quiet web3 fastapi "uvicorn[standard]" requests pandas numpy scipy psutil
-  /opt/venv/bin/pip install --quiet coincurve || echo "WARNING: coincurve not installed (signature checks will be slow)"
 fi
 touch /opt/ready
