@@ -53,27 +53,43 @@ def fig1():
 
 # ------------------------------------------------------------------------------------------------
 def fig2():
-    fig = plt.figure(figsize=(W1, 2.6)); ax = fig.add_axes([0, 0, 1, 1]); ax.set_xlim(0, W1); ax.set_ylim(0, 2.6); ax.axis("off")
-    X = [0.34, 1.02, 1.72, 2.38, 3.07]; names = ["IIoT device /\nrequester", "Gateway\n(PEP)", "Identity-\nRegistry", "Trust-\nManager", "Access-\nControl (PDP)"]
-    top, bot = 2.20, 0.34
-    for x, n in zip(X, names):
-        box(ax, x - 0.29, 2.22, 0.58, 0.33, n, fc="#EEF3F9", fs=5.5, style="square,pad=0")
-        ax.plot([x, x], [top, bot], color="#7A7A7A", lw=0.5, ls=(0, (3, 2)), zorder=2)
-    ax.add_patch(Rectangle((X[1] - 0.035, 0.46), 0.07, 1.70, fc="white", ec=INK, lw=0.5, zorder=3))  # activation of the PEP
-    steps = [  # (from, to, label, dashed)
-        (0, 1, "1  access request", False), (1, 2, "2  isActive(device)?", False), (2, 1, "3  valid / revoked", True),
-        (1, 3, "4  getScore(device)", False), (3, 1, "5  current trust score", True),
-        (1, 4, "6  checkAccess(device, resource, action)", False), (4, 1, "7  AccessDecision event", True), (1, 0, "8  allow / deny", True)]
-    y = 2.03
-    for s, t, lab, dashed in steps:
-        xs, xt = X[s], X[t]; d = 1 if t > s else -1
-        arrow(ax, (xs + 0.035 * d, y), (xt - 0.035 * d if t == 1 else xt, y), None, ls=(0, (3, 1.5)) if dashed else "-", lw=0.7)
-        g = (s == 1 or t == 1) and max(s, t) > 1
-        ax.text(X[1] + 0.07 if g else (xs + xt) / 2, y + 0.035, lab, ha="left" if g else "center", va="bottom", fontsize=5.7, zorder=6)
-        y -= 0.215
-    # monitoring note
-    box(ax, 1.30, 0.30, 1.85, 0.27, "9  Monitoring / IDS: reportEvidence() to TrustManager;\nthe new score applies to the next request only", fc="#FFF8E8", ec="#8A6D00", fs=5.2, style="square,pad=0")
-    ax.text(W1 / 2, 0.10, "Every request repeats steps 1 to 8 independently; no session state persists.", ha="center", va="center", fontsize=5.8, style="italic")
+    from matplotlib.patches import Circle
+    H = 2.6
+    fig = plt.figure(figsize=(W1, H)); ax = fig.add_axes([0, 0, 1, 1]); ax.set_xlim(0, W1); ax.set_ylim(0, H); ax.axis("off")
+    X = [0.40, 1.05, 1.74, 2.38, 3.04]
+    heads = [("IIoT device /", "requester", "#F2F2F2", "#8A8A8A"), ("Gateway", "(PEP)", "#DDEBD5", "#5E8C4A"),
+             ("Identity-", "Registry", "#D3E4F5", "#2F6EA8"), ("Trust-", "Manager", "#D3E4F5", "#2F6EA8"), ("AccessControl", "(PDP)", "#D3E4F5", "#2F6EA8")]
+    bot = 0.46
+    ys = [1.98 - 0.205 * i for i in range(8)]
+    for i0, lab in [(1, "identity"), (3, "trust"), (5, "policy")]:
+        yb = ys[i0 + 1] - 0.05; yt = ys[i0] + 0.13
+        ax.add_patch(Rectangle((0.02, yb), W1 - 0.04, yt - yb, fc="#F1F5FA", ec="none", zorder=0))
+        ax.text(W1 - 0.05, yb + 0.02, lab, ha="right", va="bottom", fontsize=5.0, color="#5A6B7B", style="italic", zorder=1)
+    for x, (l1, l2, fc, ec) in zip(X, heads):
+        ax.add_patch(FancyBboxPatch((x - 0.30, 2.24), 0.60, 0.30, boxstyle="round,pad=0,rounding_size=0.04", fc=fc, ec=ec, lw=0.7, zorder=3))
+        ax.text(x, 2.39, l1 + "\n" + l2, ha="center", va="center", fontsize=5.3, color=INK, zorder=4, linespacing=1.1, fontweight="bold" if x == X[1] else "normal")
+        ax.plot([x, x], [2.24, bot], color="#9A9A9A", lw=0.5, ls=(0, (1, 2)), zorder=1)
+    ax.add_patch(Rectangle((X[1] - 0.03, bot + 0.04), 0.06, 2.24 - bot - 0.08, fc="#5E8C4A", ec="#3F6431", lw=0.4, zorder=3, alpha=0.9))
+    steps = [(0, 1, "access request", False), (1, 2, "isActive(device)?", False), (2, 1, "valid / revoked", True),
+             (1, 3, "getScore(device)", False), (3, 1, "current trust score", True),
+             (1, 4, "checkAccess(device, resource, action)", False), (4, 1, "AccessDecision event", True), (1, 0, "allow / deny", True)]
+    def badge(x, y, n, col):
+        ax.add_patch(Circle((x, y), 0.052, fc=col, ec="none", zorder=7))
+        ax.text(x, y, str(n), ha="center", va="center", fontsize=4.6, color="white", fontweight="bold", zorder=8)
+    for n, ((s_, t_, lab, ret), y) in enumerate(zip(steps, ys), 1):
+        d = 1 if t_ > s_ else -1
+        xs = X[s_] + (0.03 * d if s_ == 1 else 0); xt = X[t_] - (0.03 * d if t_ == 1 else 0)
+        col = "#2F6EA8" if ret else INK
+        ax.add_patch(FancyArrowPatch((xs, y), (xt, y), arrowstyle="-|>", mutation_scale=5.5, lw=0.75, color=col,
+                                     ls=(0, (3, 1.6)) if ret else "-", zorder=5, shrinkA=0, shrinkB=0))
+        xl = X[0] + 0.14 if n in (1, 8) else X[1] + 0.20
+        badge(xl - 0.075, y + 0.085, n, col)
+        ax.text(xl, y + 0.04, lab, ha="left", va="bottom", fontsize=5.6, color=col, zorder=6)
+    ax.add_patch(FancyBboxPatch((1.18, 0.05), 2.12, 0.30, boxstyle="round,pad=0,rounding_size=0.04", fc="#FFF6DC", ec="#B08900", lw=0.6, zorder=4))
+    ax.text(2.27, 0.20, "Monitoring / IDS: reportEvidence() to TrustManager;\nthe new score applies to the next request only", ha="center", va="center", fontsize=5.0, color=INK, zorder=5, linespacing=1.15)
+    badge(1.18, 0.35, 9, "#B08900")
+    ax.plot([X[3], X[3]], [bot, 0.35], color="#B08900", lw=0.6, ls=(0, (1, 1.5)), zorder=2)
+    ax.text(0.05, 0.20, "Steps 1 to 8 repeat for\nevery request; no session\nstate. Solid: call; dashed: return.", ha="left", va="center", fontsize=4.7, color=INK, style="italic", linespacing=1.15)
     save(fig, "fig2_workflow")
 
 fig1(); fig2(); print("done")
